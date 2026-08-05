@@ -26,9 +26,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -117,7 +119,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "rent_manager_pro_db"
+                    "rent_manager_workable_db"
                 ).build()
                 INSTANCE = instance
                 instance
@@ -127,7 +129,7 @@ abstract class AppDatabase : RoomDatabase() {
 }
 
 // ==========================================
-// 4. MAIN ACTIVITY & UI
+// 4. MAIN ACTIVITY & APP UI
 // ==========================================
 
 class MainActivity : ComponentActivity() {
@@ -136,13 +138,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme(
                 colorScheme = lightColorScheme(
-                    primary = Color(0xFF1976D2),
+                    primary = Color(0xFF1565C0),
                     primaryContainer = Color(0xFFE3F2FD),
-                    secondary = Color(0xFF388E3C),
+                    secondary = Color(0xFF2E7D32),
                     secondaryContainer = Color(0xFFE8F5E9)
                 )
             ) {
-                RentManagerProApp()
+                RentManagerWorkableApp()
             }
         }
     }
@@ -150,7 +152,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RentManagerProApp() {
+fun RentManagerWorkableApp() {
     val context = LocalContext.current
     val db = remember { AppDatabase.getDatabase(context) }
     val dao = db.appDao()
@@ -171,7 +173,7 @@ fun RentManagerProApp() {
                 title = {
                     Column {
                         Text("Rent Manager Pro", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text("Local Storage Active", fontSize = 12.sp, color = Color.DarkGray)
+                        Text("Local Storage Active | Workable Mode", fontSize = 12.sp, color = Color.DarkGray)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -227,11 +229,17 @@ fun RentManagerProApp() {
                 0 -> DashboardScreen(properties, tenants, payments)
                 1 -> PropertyTab(properties) { prop ->
                     coroutineScope.launch { dao.deleteProperty(prop) }
-                    Toast.makeText(context, "Property Removed", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Property Deleted", Toast.LENGTH_SHORT).show()
                 }
-                2 -> TenantTab(tenants) { tenant ->
-                    coroutineScope.launch { dao.deleteTenant(tenant) }
-                    Toast.makeText(context, "Tenant Removed", Toast.LENGTH_SHORT).show()
+                2 -> TenantTab(tenants, payments) { tenant ->
+                    coroutineScope.launch {
+                        dao.deleteTenant(tenant)
+                        val prop = properties.find { it.name == tenant.propertyName }
+                        if (prop != null) {
+                            dao.insertProperty(prop.copy(isOccupied = false))
+                        }
+                    }
+                    Toast.makeText(context, "Tenant Removed & Shop Vacated", Toast.LENGTH_SHORT).show()
                 }
                 3 -> PaymentTab(payments)
             }
@@ -250,7 +258,7 @@ fun RentManagerProApp() {
 
     if (showAddTenantDialog) {
         AddTenantDialog(
-            properties = properties,
+            vacantProperties = properties.filter { !it.isOccupied },
             onDismiss = { showAddTenantDialog = false },
             onAdd = { name, phone, shop, rent, deposit, dueDay, start, end, idProof ->
                 coroutineScope.launch {
@@ -279,7 +287,7 @@ fun RentManagerProApp() {
 }
 
 // ==========================================
-// 5. DASHBOARD SCREEN (Stats & Summary)
+// 5. DASHBOARD & METRICS
 // ==========================================
 
 @Composable
@@ -291,12 +299,12 @@ fun DashboardScreen(properties: List<PropertyEntity>, tenants: List<TenantEntity
     val collectionPercentage = if (totalExpected > 0) ((totalReceived / totalExpected) * 100).coerceAtMost(100.0) else 0.0
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Financial Overview", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("Overview & Performance", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(12.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard("Expected Rent", "₹${totalExpected.toInt()}", Color(0xFF1565C0), Modifier.weight(1f))
-            MetricCard("Rent Received", "₹${totalReceived.toInt()}", Color(0xFF2E7D32), Modifier.weight(1f))
+            MetricCard("Expected Monthly", "₹${totalExpected.toInt()}", Color(0xFF1565C0), Modifier.weight(1f))
+            MetricCard("Rent Collected", "₹${totalReceived.toInt()}", Color(0xFF2E7D32), Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -323,7 +331,7 @@ fun DashboardScreen(properties: List<PropertyEntity>, tenants: List<TenantEntity
 
 @Composable
 fun MetricCard(title: String, value: String, color: Color, modifier: Modifier = Modifier) {
-    Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.1f))) {
+    Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.12f))) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(title, fontSize = 12.sp, color = Color.DarkGray)
             Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
@@ -332,22 +340,35 @@ fun MetricCard(title: String, value: String, color: Color, modifier: Modifier = 
 }
 
 // ==========================================
-// 6. TABS & REMINDER FUNCTIONS
+// 6. TABS WITH SEARCH & REMINDERS
 // ==========================================
 
 @Composable
 fun PropertyTab(properties: List<PropertyEntity>, onDelete: (PropertyEntity) -> Unit) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredProperties = properties.filter { it.name.contains(searchQuery, ignoreCase = true) }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Shops & Properties (${properties.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("Search Shop...") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Spacer(modifier = Modifier.height(12.dp))
 
-        if (properties.isEmpty()) {
+        if (filteredProperties.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No Shops added yet.", color = Color.Gray)
+                Text("No Shops found.", color = Color.Gray)
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                items(properties) { prop ->
+                items(filteredProperties) { prop ->
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                             Column(modifier = Modifier.weight(1f)) {
@@ -367,20 +388,35 @@ fun PropertyTab(properties: List<PropertyEntity>, onDelete: (PropertyEntity) -> 
 }
 
 @Composable
-fun TenantTab(tenants: List<TenantEntity>, onDelete: (TenantEntity) -> Unit) {
+fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onDelete: (TenantEntity) -> Unit) {
     val context = LocalContext.current
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredTenants = tenants.filter { it.name.contains(searchQuery, ignoreCase = true) || it.propertyName.contains(searchQuery, ignoreCase = true) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Tenants (${tenants.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("Search Tenant or Shop...") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Spacer(modifier = Modifier.height(12.dp))
 
-        if (tenants.isEmpty()) {
+        if (filteredTenants.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No Tenants added.", color = Color.Gray)
+                Text("No Tenants found.", color = Color.Gray)
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                items(tenants) { tenant ->
+                items(filteredTenants) { tenant ->
+                    val totalPaid = payments.filter { it.tenantName.equals(tenant.name, ignoreCase = true) }.sumOf { it.amount }
+                    val balance = (tenant.monthlyRent - totalPaid).coerceAtLeast(0.0)
+
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -391,15 +427,12 @@ fun TenantTab(tenants: List<TenantEntity>, onDelete: (TenantEntity) -> Unit) {
                             }
                             Text("Phone: ${tenant.phone} | Shop: ${tenant.propertyName}", fontSize = 13.sp)
                             Text("Rent: ₹${tenant.monthlyRent.toInt()} | Deposit: ₹${tenant.securityDeposit.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
-                            Text("Due Day: ${tenant.dueDayOfMonth}th of month", fontSize = 12.sp, color = MaterialTheme.colorScheme.primary)
-                            Text("Agreement: ${tenant.agreementStart} to ${tenant.agreementEnd}", fontSize = 12.sp, color = Color.Gray)
-                            if (tenant.idProofNote.isNotBlank()) {
-                                Text("ID Proof: ${tenant.idProofNote}", fontSize = 12.sp, color = Color.DarkGray)
-                            }
+                            Text("Paid: ₹${totalPaid.toInt()} | Pending Balance: ₹${balance.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (balance > 0) Color(0xFFC62828) else Color(0xFF2E7D32))
+                            Text("Due Day: ${tenant.dueDayOfMonth}th | Agreement: ${tenant.agreementStart} to ${tenant.agreementEnd}", fontSize = 12.sp, color = Color.Gray)
 
                             Spacer(modifier = Modifier.height(10.dp))
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                val msg = "Hello ${tenant.name}, this is a friendly reminder that your rent of ₹${tenant.monthlyRent.toInt()} for ${tenant.propertyName} is due on ${tenant.dueDayOfMonth}th. Please pay on time. Thank you!"
+                                val msg = "Hello ${tenant.name}, rent reminder of ₹${tenant.monthlyRent.toInt()} for ${tenant.propertyName} (Pending: ₹${balance.toInt()}) due on ${tenant.dueDayOfMonth}th. Please pay soon. Thank you!"
 
                                 Button(onClick = { sendWhatsApp(context, tenant.phone, msg) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))) {
                                     Text("WhatsApp", fontSize = 11.sp, color = Color.White)
@@ -421,19 +454,44 @@ fun TenantTab(tenants: List<TenantEntity>, onDelete: (TenantEntity) -> Unit) {
 
 @Composable
 fun PaymentTab(payments: List<PaymentEntity>) {
+    val context = LocalContext.current
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredPayments = payments.filter { it.tenantName.contains(searchQuery, ignoreCase = true) }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Payment Records (${payments.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Text("Payment History (${payments.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Button(onClick = { exportPaymentsCSV(context, payments) }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
+                Text("Export CSV", fontSize = 12.sp)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("Search Payment by Tenant...") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+            modifier = Modifier.fillMaxWidth()
+        )
+
         Spacer(modifier = Modifier.height(12.dp))
 
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            items(payments) { pay ->
-                Card(modifier = Modifier.fillMaxWidth()) {
-                    Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Column {
-                            Text(pay.tenantName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            Text("Date: ${pay.date} | Mode: ${pay.mode}", fontSize = 12.sp, color = Color.Gray)
+        if (filteredPayments.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No Payments recorded.", color = Color.Gray)
+            }
+        } else {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(filteredPayments) { pay ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Column {
+                                Text(pay.tenantName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text("Date: ${pay.date} | Mode: ${pay.mode}", fontSize = 12.sp, color = Color.Gray)
+                            }
+                            Text("+ ₹${pay.amount.toInt()}", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32), fontSize = 16.sp)
                         }
-                        Text("+ ₹${pay.amount.toInt()}", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32), fontSize = 16.sp)
                     }
                 }
             }
@@ -441,7 +499,7 @@ fun PaymentTab(payments: List<PaymentEntity>) {
     }
 }
 
-// Helper Actions for Reminders
+// Helpers
 fun sendWhatsApp(context: Context, phone: String, message: String) {
     try {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=+91$phone&text=${Uri.encode(message)}"))
@@ -463,6 +521,27 @@ fun copyToClipboard(context: Context, text: String) {
     val clip = ClipData.newPlainText("Rent Reminder", text)
     clipboard.setPrimaryClip(clip)
     Toast.makeText(context, "Reminder text copied!", Toast.LENGTH_SHORT).show()
+}
+
+fun exportPaymentsCSV(context: Context, payments: List<PaymentEntity>) {
+    try {
+        val csvHeader = "Tenant Name,Amount Paid,Date,Payment Mode\n"
+        val csvBody = payments.joinToString("\n") { "${it.tenantName},${it.amount},${it.date},${it.mode}" }
+        val csvContent = csvHeader + csvBody
+
+        val file = File(context.cacheDir, "Payment_Report.csv")
+        file.writeText(csvContent)
+
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Share Payment Report"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error exporting CSV: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
 }
 
 // Dialogs
@@ -487,12 +566,14 @@ fun AddPropertyDialog(onDismiss: () -> Unit, onAdd: (String, String, Double) -> 
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddTenantDialog(properties: List<PropertyEntity>, onDismiss: () -> Unit, onAdd: (String, String, String, Double, Double, Int, String, String, String) -> Unit) {
+fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Unit, onAdd: (String, String, String, Double, Double, Int, String, String, String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
-    var shopName by remember { mutableStateOf("") }
-    var rent by remember { mutableStateOf("") }
+    var selectedShop by remember { mutableStateOf(vacantProperties.firstOrNull()?.name ?: "") }
+    var expanded by remember { mutableStateOf(false) }
+    var rent by remember { mutableStateOf(vacantProperties.firstOrNull()?.rentAmount?.toInt()?.toString() ?: "") }
     var deposit by remember { mutableStateOf("") }
     var dueDay by remember { mutableStateOf("5") }
     var start by remember { mutableStateOf("01 Jan 2026") }
@@ -501,24 +582,49 @@ fun AddTenantDialog(properties: List<PropertyEntity>, onDismiss: () -> Unit, onA
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Tenant Details") },
+        title = { Text("Add Tenant") },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(value = shopName, onValueChange = { shopName = it }, label = { Text("Assigned Shop Name") }, modifier = Modifier.fillMaxWidth()) }
+
+                item {
+                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                        OutlinedTextField(
+                            value = selectedShop,
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Select Vacant Shop") },
+                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                        )
+                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                            vacantProperties.forEach { prop ->
+                                DropdownMenuItem(
+                                    text = { Text("${prop.name} (₹${prop.rentAmount.toInt()})") },
+                                    onClick = {
+                                        selectedShop = prop.name
+                                        rent = prop.rentAmount.toInt().toString()
+                                        expanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
                 item { OutlinedTextField(value = rent, onValueChange = { rent = it }, label = { Text("Rent Amount (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = deposit, onValueChange = { deposit = it }, label = { Text("Security Deposit (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = dueDay, onValueChange = { dueDay = it }, label = { Text("Rent Due Day (1-31)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = start, onValueChange = { start = it }, label = { Text("Agreement Start Date") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = end, onValueChange = { end = it }, label = { Text("Agreement End Date") }, modifier = Modifier.fillMaxWidth()) }
-                item { OutlinedTextField(value = idProof, onValueChange = { idProof = it }, label = { Text("ID Proof / Note") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = idProof, onValueChange = { idProof = it }, label = { Text("ID Proof Note") }, modifier = Modifier.fillMaxWidth()) }
             }
         },
         confirmButton = {
             Button(onClick = {
-                if (name.isNotBlank()) {
-                    onAdd(name, phone, shopName, rent.toDoubleOrNull() ?: 0.0, deposit.toDoubleOrNull() ?: 0.0, dueDay.toIntOrNull() ?: 5, start, end, idProof)
+                if (name.isNotBlank() && selectedShop.isNotBlank()) {
+                    onAdd(name, phone, selectedShop, rent.toDoubleOrNull() ?: 0.0, deposit.toDoubleOrNull() ?: 0.0, dueDay.toIntOrNull() ?: 5, start, end, idProof)
                 }
             }) { Text("Save Tenant") }
         },
@@ -526,26 +632,49 @@ fun AddTenantDialog(properties: List<PropertyEntity>, onDismiss: () -> Unit, onA
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddPaymentDialog(tenants: List<TenantEntity>, onDismiss: () -> Unit, onAdd: (String, Double, String) -> Unit) {
-    var tenantName by remember { mutableStateOf("") }
-    var amount by remember { mutableStateOf("") }
+    var selectedTenant by remember { mutableStateOf(tenants.firstOrNull()?.name ?: "") }
+    var expanded by remember { mutableStateOf(false) }
+    var amount by remember { mutableStateOf(tenants.firstOrNull()?.monthlyRent?.toInt()?.toString() ?: "") }
     var mode by remember { mutableStateOf("UPI") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Record Payment") },
+        title = { Text("Record Rent Payment") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = tenantName, onValueChange = { tenantName = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth())
+                ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    OutlinedTextField(
+                        value = selectedTenant,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text("Select Tenant") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        tenants.forEach { t ->
+                            DropdownMenuItem(
+                                text = { Text("${t.name} (${t.propertyName})") },
+                                onClick = {
+                                    selectedTenant = t.name
+                                    amount = t.monthlyRent.toInt().toString()
+                                    expanded = false
+                                }
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(value = amount, onValueChange = { amount = it }, label = { Text("Amount Paid (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = mode, onValueChange = { mode = it }, label = { Text("Mode (UPI/Cash/Cheque)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = mode, onValueChange = { mode = it }, label = { Text("Payment Mode (UPI/Cash/Cheque)") }, modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
             Button(onClick = {
-                if (tenantName.isNotBlank() && amount.isNotBlank()) {
-                    onAdd(tenantName, amount.toDoubleOrNull() ?: 0.0, mode)
+                if (selectedTenant.isNotBlank() && amount.isNotBlank()) {
+                    onAdd(selectedTenant, amount.toDoubleOrNull() ?: 0.0, mode)
                 }
             }) { Text("Save Payment") }
         },
