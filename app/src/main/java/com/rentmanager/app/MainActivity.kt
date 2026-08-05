@@ -1,5 +1,6 @@
 package com.rentmanager.app
 
+import android.content.Context
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -7,7 +8,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -26,31 +26,100 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.room.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 
-// Data Models
-data class Property(
-    val id: Int,
+// ==========================================
+// 1. ROOM DATABASE ENTITIES (Phone Storage)
+// ==========================================
+
+@Entity(tableName = "properties")
+data class PropertyEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
     val type: String,
-    val rentAmount: Double,
-    var isOccupied: Boolean = true
+    val rentAmount: Double
 )
 
-data class Tenant(
-    val id: Int,
+@Entity(tableName = "tenants")
+data class TenantEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
     val phone: String,
     val propertyName: String,
     val monthlyRent: Double
 )
 
-data class Payment(
-    val id: Int,
+@Entity(tableName = "payments")
+data class PaymentEntity(
+    @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val tenantName: String,
     val amount: Double,
     val date: String,
     val mode: String
 )
+
+// ==========================================
+// 2. ROOM DAO (Database Operations)
+// ==========================================
+
+@Dao
+interface AppDao {
+    @Query("SELECT * FROM properties")
+    fun getAllProperties(): Flow<List<PropertyEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProperty(property: PropertyEntity)
+
+    @Delete
+    suspend fun deleteProperty(property: PropertyEntity)
+
+    @Query("SELECT * FROM tenants")
+    fun getAllTenants(): Flow<List<TenantEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertTenant(tenant: TenantEntity)
+
+    @Delete
+    suspend fun deleteTenant(tenant: TenantEntity)
+
+    @Query("SELECT * FROM payments")
+    fun getAllPayments(): Flow<List<PaymentEntity>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPayment(payment: PaymentEntity)
+}
+
+// ==========================================
+// 3. ROOM DATABASE CLASS
+// ==========================================
+
+@Database(entities = [PropertyEntity::class, TenantEntity::class, PaymentEntity::class], version = 1, exportSchema = false)
+abstract class AppDatabase : RoomDatabase() {
+    abstract fun appDao(): AppDao
+
+    companion object {
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
+
+        fun getDatabase(context: Context): AppDatabase {
+            return INSTANCE ?: synchronized(this) {
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "rent_manager_local_db"
+                ).build()
+                INSTANCE = instance
+                instance
+            }
+        }
+    }
+}
+
+// ==========================================
+// 4. MAIN ACTIVITY & UI INTEGRATION
+// ==========================================
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -74,28 +143,14 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun RentManagerMainScreen() {
     val context = LocalContext.current
+    val db = remember { AppDatabase.getDatabase(context) }
+    val dao = db.appDao()
+    val coroutineScope = rememberCoroutineScope()
 
-    // Active App State
-    val properties = remember {
-        mutableStateListOf(
-            Property(1, "Shop No. 101", "Shop", 8500.0, true),
-            Property(2, "Shop No. 102", "Shop", 7000.0, true)
-        )
-    }
-
-    val tenants = remember {
-        mutableStateListOf(
-            Tenant(1, "Ramesh Kumar", "9876543210", "Shop No. 101", 8500.0),
-            Tenant(2, "Sunil Sharma", "9812345678", "Shop No. 102", 7000.0)
-        )
-    }
-
-    val payments = remember {
-        mutableStateListOf(
-            Payment(1, "Ramesh Kumar", 8500.0, "01 Aug 2026", "UPI"),
-            Payment(2, "Sunil Sharma", 7000.0, "02 Aug 2026", "Cash")
-        )
-    }
+    // Real-time Database Observer
+    val properties by dao.getAllProperties().collectAsState(initial = emptyList())
+    val tenants by dao.getAllTenants().collectAsState(initial = emptyList())
+    val payments by dao.getAllPayments().collectAsState(initial = emptyList())
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var showAddPropertyDialog by remember { mutableStateOf(false) }
@@ -108,7 +163,7 @@ fun RentManagerMainScreen() {
                 title = {
                     Column {
                         Text("Rent Manager", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text("Shops, Tenants & Payments", fontSize = 12.sp, color = Color.DarkGray)
+                        Text("Local Storage Active (Offline Saved)", fontSize = 12.sp, color = Color.DarkGray)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -162,15 +217,19 @@ fun RentManagerMainScreen() {
                 0 -> PropertyTab(
                     properties = properties,
                     onDelete = { prop ->
-                        properties.remove(prop)
-                        Toast.makeText(context, "Property Removed", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch {
+                            dao.deleteProperty(prop)
+                        }
+                        Toast.makeText(context, "Property Deleted", Toast.LENGTH_SHORT).show()
                     }
                 )
                 1 -> TenantTab(
                     tenants = tenants,
                     onDelete = { tenant ->
-                        tenants.remove(tenant)
-                        Toast.makeText(context, "Tenant Removed", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch {
+                            dao.deleteTenant(tenant)
+                        }
+                        Toast.makeText(context, "Tenant Deleted", Toast.LENGTH_SHORT).show()
                     }
                 )
                 2 -> PaymentTab(payments = payments)
@@ -178,14 +237,16 @@ fun RentManagerMainScreen() {
         }
     }
 
-    // Dialogs
+    // Dialogs for Adding Data
     if (showAddPropertyDialog) {
         AddPropertyDialog(
             onDismiss = { showAddPropertyDialog = false },
-            onAdd = { newProp ->
-                properties.add(newProp)
+            onAdd = { name, type, rent ->
+                coroutineScope.launch {
+                    dao.insertProperty(PropertyEntity(name = name, type = type, rentAmount = rent))
+                }
                 showAddPropertyDialog = false
-                Toast.makeText(context, "Property Added!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Property Saved to Storage!", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -193,10 +254,12 @@ fun RentManagerMainScreen() {
     if (showAddTenantDialog) {
         AddTenantDialog(
             onDismiss = { showAddTenantDialog = false },
-            onAdd = { newTenant ->
-                tenants.add(newTenant)
+            onAdd = { name, phone, propName, rent ->
+                coroutineScope.launch {
+                    dao.insertTenant(TenantEntity(name = name, phone = phone, propertyName = propName, monthlyRent = rent))
+                }
                 showAddTenantDialog = false
-                Toast.makeText(context, "Tenant Added!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Tenant Saved to Storage!", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -204,24 +267,27 @@ fun RentManagerMainScreen() {
     if (showAddPaymentDialog) {
         AddPaymentDialog(
             onDismiss = { showAddPaymentDialog = false },
-            onAdd = { newPayment ->
-                payments.add(newPayment)
+            onAdd = { tenantName, amount, mode ->
+                coroutineScope.launch {
+                    dao.insertPayment(PaymentEntity(tenantName = tenantName, amount = amount, date = "Today", mode = mode))
+                }
                 showAddPaymentDialog = false
-                Toast.makeText(context, "Payment Logged!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Payment Record Saved!", Toast.LENGTH_SHORT).show()
             }
         )
     }
 }
 
+// UI Tabs
 @Composable
-fun PropertyTab(properties: List<Property>, onDelete: (Property) -> Unit) {
+fun PropertyTab(properties: List<PropertyEntity>, onDelete: (PropertyEntity) -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Properties & Shops", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("Properties & Shops (${properties.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(12.dp))
 
         if (properties.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No Properties added yet. Click + to add.", color = Color.Gray)
+                Text("No Properties in Database. Click + to add.", color = Color.Gray)
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -251,14 +317,14 @@ fun PropertyTab(properties: List<Property>, onDelete: (Property) -> Unit) {
 }
 
 @Composable
-fun TenantTab(tenants: List<Tenant>, onDelete: (Tenant) -> Unit) {
+fun TenantTab(tenants: List<TenantEntity>, onDelete: (TenantEntity) -> Unit) {
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Active Tenants", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("Active Tenants (${tenants.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold)
         Spacer(modifier = Modifier.height(12.dp))
 
         if (tenants.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No Tenants added. Click + to add.", color = Color.Gray)
+                Text("No Tenants in Database. Click + to add.", color = Color.Gray)
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -290,7 +356,7 @@ fun TenantTab(tenants: List<Tenant>, onDelete: (Tenant) -> Unit) {
 }
 
 @Composable
-fun PaymentTab(payments: List<Payment>) {
+fun PaymentTab(payments: List<PaymentEntity>) {
     val totalCollected = payments.sumOf { it.amount }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -299,7 +365,7 @@ fun PaymentTab(payments: List<Payment>) {
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Total Rent Collected This Month", fontSize = 14.sp, color = Color.DarkGray)
+                Text("Total Rent Collected", fontSize = 14.sp, color = Color.DarkGray)
                 Text("₹ ${totalCollected.toInt()}", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.secondary)
             }
         }
@@ -310,7 +376,7 @@ fun PaymentTab(payments: List<Payment>) {
 
         if (payments.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No payment records yet.", color = Color.Gray)
+                Text("No payments recorded yet.", color = Color.Gray)
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -337,8 +403,9 @@ fun PaymentTab(payments: List<Payment>) {
     }
 }
 
+// Dialog Composables
 @Composable
-fun AddPropertyDialog(onDismiss: () -> Unit, onAdd: (Property) -> Unit) {
+fun AddPropertyDialog(onDismiss: () -> Unit, onAdd: (String, String, Double) -> Unit) {
     var name by remember { mutableStateOf("") }
     var type by remember { mutableStateOf("Shop") }
     var rent by remember { mutableStateOf("") }
@@ -348,24 +415,24 @@ fun AddPropertyDialog(onDismiss: () -> Unit, onAdd: (Property) -> Unit) {
         title = { Text("Add Property / Shop") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name (e.g. Shop 103)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Shop/Property Name") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = type, onValueChange = { type = it }, label = { Text("Type (Shop/Flat)") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = rent, onValueChange = { rent = it }, label = { Text("Monthly Rent Amount (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = rent, onValueChange = { rent = it }, label = { Text("Rent Amount (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
             Button(onClick = {
                 if (name.isNotBlank() && rent.isNotBlank()) {
-                    onAdd(Property(System.currentTimeMillis().toInt(), name, type, rent.toDoubleOrNull() ?: 0.0))
+                    onAdd(name, type, rent.toDoubleOrNull() ?: 0.0)
                 }
-            }) { Text("Add") }
+            }) { Text("Save") }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
 @Composable
-fun AddTenantDialog(onDismiss: () -> Unit, onAdd: (Tenant) -> Unit) {
+fun AddTenantDialog(onDismiss: () -> Unit, onAdd: (String, String, String, Double) -> Unit) {
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var propName by remember { mutableStateOf("") }
@@ -378,23 +445,23 @@ fun AddTenantDialog(onDismiss: () -> Unit, onAdd: (Tenant) -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = propName, onValueChange = { propName = it }, label = { Text("Assigned Shop") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = propName, onValueChange = { propName = it }, label = { Text("Assigned Shop No.") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = rent, onValueChange = { rent = it }, label = { Text("Monthly Rent (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
             }
         },
         confirmButton = {
             Button(onClick = {
                 if (name.isNotBlank()) {
-                    onAdd(Tenant(System.currentTimeMillis().toInt(), name, phone, propName, rent.toDoubleOrNull() ?: 0.0))
+                    onAdd(name, phone, propName, rent.toDoubleOrNull() ?: 0.0)
                 }
-            }) { Text("Add") }
+            }) { Text("Save") }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
 
 @Composable
-fun AddPaymentDialog(onDismiss: () -> Unit, onAdd: (Payment) -> Unit) {
+fun AddPaymentDialog(onDismiss: () -> Unit, onAdd: (String, Double, String) -> Unit) {
     var tenantName by remember { mutableStateOf("") }
     var amount by remember { mutableStateOf("") }
     var mode by remember { mutableStateOf("UPI") }
@@ -412,9 +479,9 @@ fun AddPaymentDialog(onDismiss: () -> Unit, onAdd: (Payment) -> Unit) {
         confirmButton = {
             Button(onClick = {
                 if (tenantName.isNotBlank() && amount.isNotBlank()) {
-                    onAdd(Payment(System.currentTimeMillis().toInt(), tenantName, amount.toDoubleOrNull() ?: 0.0, "Today", mode))
+                    onAdd(tenantName, amount.toDoubleOrNull() ?: 0.0, mode)
                 }
-            }) { Text("Save Payment") }
+            }) { Text("Save") }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
     )
