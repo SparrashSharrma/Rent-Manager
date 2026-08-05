@@ -4,6 +4,9 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -119,7 +122,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "rent_manager_workable_db"
+                    "rent_manager_saffron_db"
                 ).build()
                 INSTANCE = instance
                 instance
@@ -129,22 +132,30 @@ abstract class AppDatabase : RoomDatabase() {
 }
 
 // ==========================================
-// 4. MAIN ACTIVITY & APP UI
+// 4. MAIN ACTIVITY & SAFFRON-GOLDEN THEME
 // ==========================================
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
+            // Saffron Golden Theme Color Palette
+            val SaffronPrimary = Color(0xFFE65100)      // Deep Saffron
+            val SaffronContainer = Color(0xFFFFE0B2)    // Warm Light Saffron
+            val GoldenSecondary = Color(0xFFFF8F00)     // Warm Gold / Amber
+            val GoldenContainer = Color(0xFFFFF8E1)     // Smooth Golden Cream
+            val BackgroundSurface = Color(0xFFFFFDF9)   // Warm Surface Background
+
             MaterialTheme(
                 colorScheme = lightColorScheme(
-                    primary = Color(0xFF1565C0),
-                    primaryContainer = Color(0xFFE3F2FD),
-                    secondary = Color(0xFF2E7D32),
-                    secondaryContainer = Color(0xFFE8F5E9)
+                    primary = SaffronPrimary,
+                    primaryContainer = SaffronContainer,
+                    secondary = GoldenSecondary,
+                    secondaryContainer = GoldenContainer,
+                    surface = BackgroundSurface
                 )
             ) {
-                RentManagerWorkableApp()
+                RentManagerExportApp()
             }
         }
     }
@@ -152,7 +163,7 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun RentManagerWorkableApp() {
+fun RentManagerExportApp() {
     val context = LocalContext.current
     val db = remember { AppDatabase.getDatabase(context) }
     val dao = db.appDao()
@@ -172,15 +183,15 @@ fun RentManagerWorkableApp() {
             TopAppBar(
                 title = {
                     Column {
-                        Text("Rent Manager Pro", fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                        Text("Local Storage Active | Workable Mode", fontSize = 12.sp, color = Color.DarkGray)
+                        Text("Rent Manager Pro", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color(0xFF4E342E))
+                        Text("Developer: Sparrash Sharrma", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFD84315))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             )
         },
         bottomBar = {
-            NavigationBar {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.primaryContainer) {
                 NavigationBarItem(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
@@ -287,7 +298,7 @@ fun RentManagerWorkableApp() {
 }
 
 // ==========================================
-// 5. DASHBOARD & METRICS
+// 5. DASHBOARD SCREEN
 // ==========================================
 
 @Composable
@@ -299,23 +310,23 @@ fun DashboardScreen(properties: List<PropertyEntity>, tenants: List<TenantEntity
     val collectionPercentage = if (totalExpected > 0) ((totalReceived / totalExpected) * 100).coerceAtMost(100.0) else 0.0
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Overview & Performance", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("Overview & Financials", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
         Spacer(modifier = Modifier.height(12.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard("Expected Monthly", "₹${totalExpected.toInt()}", Color(0xFF1565C0), Modifier.weight(1f))
+            MetricCard("Expected Monthly", "₹${totalExpected.toInt()}", Color(0xFFE65100), Modifier.weight(1f))
             MetricCard("Rent Collected", "₹${totalReceived.toInt()}", Color(0xFF2E7D32), Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard("Pending Dues", "₹${pendingAmount.toInt()}", Color(0xFFC62828), Modifier.weight(1f))
-            MetricCard("Vacant Shops", "$vacantShops", Color(0xFFEF6C00), Modifier.weight(1f))
+            MetricCard("Vacant Shops", "$vacantShops", Color(0xFFFF8F00), Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
+        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Collection Rate", fontWeight = FontWeight.Bold)
+                Text("Collection Rate", fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(
                     progress = { (collectionPercentage / 100).toFloat() },
@@ -323,7 +334,7 @@ fun DashboardScreen(properties: List<PropertyEntity>, tenants: List<TenantEntity
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Spacer(modifier = Modifier.height(6.dp))
-                Text("%.1f%% Collected".format(collectionPercentage), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                Text("%.1f%% Collected".format(collectionPercentage), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE65100))
             }
         }
     }
@@ -340,7 +351,7 @@ fun MetricCard(title: String, value: String, color: Color, modifier: Modifier = 
 }
 
 // ==========================================
-// 6. TABS WITH SEARCH & REMINDERS
+// 6. TABS WITH SEARCH & TENANT EXPORTS
 // ==========================================
 
 @Composable
@@ -349,7 +360,7 @@ fun PropertyTab(properties: List<PropertyEntity>, onDelete: (PropertyEntity) -> 
     val filteredProperties = properties.filter { it.name.contains(searchQuery, ignoreCase = true) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Shops & Properties (${properties.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("Shops & Properties (${properties.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
         Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
@@ -394,7 +405,7 @@ fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onDele
     val filteredTenants = tenants.filter { it.name.contains(searchQuery, ignoreCase = true) || it.propertyName.contains(searchQuery, ignoreCase = true) }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Tenants (${tenants.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        Text("Tenants (${tenants.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
         Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
@@ -412,9 +423,10 @@ fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onDele
                 Text("No Tenants found.", color = Color.Gray)
             }
         } else {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 items(filteredTenants) { tenant ->
-                    val totalPaid = payments.filter { it.tenantName.equals(tenant.name, ignoreCase = true) }.sumOf { it.amount }
+                    val tenantPayments = payments.filter { it.tenantName.equals(tenant.name, ignoreCase = true) }
+                    val totalPaid = tenantPayments.sumOf { it.amount }
                     val balance = (tenant.monthlyRent - totalPaid).coerceAtLeast(0.0)
 
                     Card(modifier = Modifier.fillMaxWidth()) {
@@ -431,17 +443,46 @@ fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onDele
                             Text("Due Day: ${tenant.dueDayOfMonth}th | Agreement: ${tenant.agreementStart} to ${tenant.agreementEnd}", fontSize = 12.sp, color = Color.Gray)
 
                             Spacer(modifier = Modifier.height(10.dp))
+                            
+                            // Reminder Action Buttons
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 val msg = "Hello ${tenant.name}, rent reminder of ₹${tenant.monthlyRent.toInt()} for ${tenant.propertyName} (Pending: ₹${balance.toInt()}) due on ${tenant.dueDayOfMonth}th. Please pay soon. Thank you!"
 
                                 Button(onClick = { sendWhatsApp(context, tenant.phone, msg) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))) {
-                                    Text("WhatsApp", fontSize = 11.sp, color = Color.White)
+                                    Text("WhatsApp", fontSize = 10.sp, color = Color.White)
                                 }
                                 Button(onClick = { sendSMS(context, tenant.phone, msg) }) {
-                                    Text("SMS", fontSize = 11.sp)
+                                    Text("SMS", fontSize = 10.sp)
                                 }
                                 OutlinedButton(onClick = { copyToClipboard(context, msg) }) {
-                                    Text("Copy Text", fontSize = 11.sp)
+                                    Text("Copy Text", fontSize = 10.sp)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Divider(color = Color.LightGray, thickness = 0.8.dp)
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            // EXPORT PDF AND EXCEL BUTTONS
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Button(
+                                    onClick = { exportTenantPDF(context, tenant, tenantPayments) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD84315)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.PictureAsPdf, contentDescription = "PDF", tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("PDF Statement", fontSize = 11.sp, color = Color.White)
+                                }
+
+                                Button(
+                                    onClick = { exportTenantCSV(context, tenant, tenantPayments) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.TableChart, contentDescription = "Excel", tint = Color.White, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Excel (CSV)", fontSize = 11.sp, color = Color.White)
                                 }
                             }
                         }
@@ -460,9 +501,9 @@ fun PaymentTab(payments: List<PaymentEntity>) {
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Payment History (${payments.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            Button(onClick = { exportPaymentsCSV(context, payments) }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
-                Text("Export CSV", fontSize = 12.sp)
+            Text("Payment History (${payments.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
+            Button(onClick = { exportAllPaymentsCSV(context, payments) }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)) {
+                Text("All Payments CSV", fontSize = 11.sp)
             }
         }
 
@@ -499,7 +540,10 @@ fun PaymentTab(payments: List<PaymentEntity>) {
     }
 }
 
-// Helpers
+// ==========================================
+// 7. EXPORT & HELPER FUNCTIONS
+// ==========================================
+
 fun sendWhatsApp(context: Context, phone: String, message: String) {
     try {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://api.whatsapp.com/send?phone=+91$phone&text=${Uri.encode(message)}"))
@@ -523,13 +567,135 @@ fun copyToClipboard(context: Context, text: String) {
     Toast.makeText(context, "Reminder text copied!", Toast.LENGTH_SHORT).show()
 }
 
-fun exportPaymentsCSV(context: Context, payments: List<PaymentEntity>) {
+// GENERATE NATIVE PDF STATEMENT FOR A TENANT
+fun exportTenantPDF(context: Context, tenant: TenantEntity, tenantPayments: List<PaymentEntity>) {
     try {
-        val csvHeader = "Tenant Name,Amount Paid,Date,Payment Mode\n"
+        val pdfDocument = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+        val page = pdfDocument.startPage(pageInfo)
+        val canvas: Canvas = page.canvas
+        val paint = Paint()
+
+        var y = 50f
+
+        paint.textSize = 20f
+        paint.isFakeBoldText = true
+        paint.color = android.graphics.Color.BLACK
+        canvas.drawText("TENANT RENT STATEMENT", 40f, y, paint)
+
+        y += 30f
+        paint.textSize = 12f
+        paint.isFakeBoldText = false
+        canvas.drawText("Tenant Name: ${tenant.name}", 40f, y, paint)
+        y += 20f
+        canvas.drawText("Phone Number: ${tenant.phone}", 40f, y, paint)
+        y += 20f
+        canvas.drawText("Assigned Shop/Property: ${tenant.propertyName}", 40f, y, paint)
+        y += 20f
+        canvas.drawText("Monthly Rent: RS ${tenant.monthlyRent.toInt()}", 40f, y, paint)
+        y += 20f
+        canvas.drawText("Security Deposit: RS ${tenant.securityDeposit.toInt()}", 40f, y, paint)
+        y += 20f
+        canvas.drawText("Rent Due Day: ${tenant.dueDayOfMonth}th of every month", 40f, y, paint)
+        y += 20f
+        canvas.drawText("Agreement Period: ${tenant.agreementStart} to ${tenant.agreementEnd}", 40f, y, paint)
+
+        y += 30f
+        val totalPaid = tenantPayments.sumOf { it.amount }
+        val balance = (tenant.monthlyRent - totalPaid).coerceAtLeast(0.0)
+
+        paint.isFakeBoldText = true
+        canvas.drawText("Total Paid: RS ${totalPaid.toInt()}  |  Pending Balance: RS ${balance.toInt()}", 40f, y, paint)
+
+        y += 20f
+        paint.color = android.graphics.Color.GRAY
+        canvas.drawLine(40f, y, 555f, y, paint)
+
+        y += 30f
+        paint.color = android.graphics.Color.BLACK
+        paint.isFakeBoldText = true
+        paint.textSize = 14f
+        canvas.drawText("Payment History Log:", 40f, y, paint)
+
+        y += 25f
+        paint.textSize = 11f
+        paint.isFakeBoldText = false
+
+        if (tenantPayments.isEmpty()) {
+            canvas.drawText("No payment transactions recorded for this tenant.", 40f, y, paint)
+        } else {
+            for (pay in tenantPayments) {
+                canvas.drawText("Date: ${pay.date}   |   Amount: RS ${pay.amount.toInt()}   |   Mode: ${pay.mode}", 40f, y, paint)
+                y += 20f
+                if (y > 780f) break
+            }
+        }
+
+        pdfDocument.finishPage(page)
+
+        val fileName = "${tenant.name.replace(" ", "_")}_Statement.pdf"
+        val file = File(context.cacheDir, fileName)
+        pdfDocument.writeTo(file.outputStream())
+        pdfDocument.close()
+
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/pdf"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Share Tenant PDF Statement"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "PDF Export Error: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+// GENERATE EXCEL (CSV) STATEMENT FOR A TENANT
+fun exportTenantCSV(context: Context, tenant: TenantEntity, tenantPayments: List<PaymentEntity>) {
+    try {
+        val totalPaid = tenantPayments.sumOf { it.amount }
+        val balance = (tenant.monthlyRent - totalPaid).coerceAtLeast(0.0)
+
+        val builder = StringBuilder()
+        builder.append("TENANT STATEMENT\n")
+        builder.append("Tenant Name,${tenant.name}\n")
+        builder.append("Phone,${tenant.phone}\n")
+        builder.append("Shop/Property,${tenant.propertyName}\n")
+        builder.append("Monthly Rent,${tenant.monthlyRent}\n")
+        builder.append("Security Deposit,${tenant.securityDeposit}\n")
+        builder.append("Agreement Period,${tenant.agreementStart} to ${tenant.agreementEnd}\n")
+        builder.append("Total Rent Paid,$totalPaid\n")
+        builder.append("Pending Balance,$balance\n\n")
+
+        builder.append("PAYMENT HISTORY\n")
+        builder.append("Date,Amount Paid (RS),Payment Mode\n")
+        for (p in tenantPayments) {
+            builder.append("${p.date},${p.amount},${p.mode}\n")
+        }
+
+        val fileName = "${tenant.name.replace(" ", "_")}_Statement.csv"
+        val file = File(context.cacheDir, fileName)
+        file.writeText(builder.toString())
+
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/csv"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Share Tenant Excel (CSV) Report"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "CSV Export Error: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+fun exportAllPaymentsCSV(context: Context, payments: List<PaymentEntity>) {
+    try {
+        val csvHeader = "Tenant Name,Amount Paid (RS),Date,Payment Mode\n"
         val csvBody = payments.joinToString("\n") { "${it.tenantName},${it.amount},${it.date},${it.mode}" }
         val csvContent = csvHeader + csvBody
 
-        val file = File(context.cacheDir, "Payment_Report.csv")
+        val file = File(context.cacheDir, "All_Payments_Report.csv")
         file.writeText(csvContent)
 
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
@@ -538,13 +704,16 @@ fun exportPaymentsCSV(context: Context, payments: List<PaymentEntity>) {
             putExtra(Intent.EXTRA_STREAM, uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-        context.startActivity(Intent.createChooser(shareIntent, "Share Payment Report"))
+        context.startActivity(Intent.createChooser(shareIntent, "Share All Payments CSV"))
     } catch (e: Exception) {
-        Toast.makeText(context, "Error exporting CSV: ${e.message}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "CSV Export Error: ${e.message}", Toast.LENGTH_SHORT).show()
     }
 }
 
-// Dialogs
+// ==========================================
+// 8. DIALOGS
+// ==========================================
+
 @Composable
 fun AddPropertyDialog(onDismiss: () -> Unit, onAdd: (String, String, Double) -> Unit) {
     var name by remember { mutableStateOf("") }
