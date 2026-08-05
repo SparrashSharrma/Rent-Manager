@@ -6,18 +6,24 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import com.rentmanager.app.ui.theme.RentManagerTheme
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            RentManagerTheme {
-                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    // App Navigation & Screens
+            MaterialTheme {
+                Surface(modifier = Modifier.fillMaxSize()) {
+                    Greeting("Rent Manager")
                 }
             }
         }
     }
+}
+
+@Composable
+fun Greeting(name: String) {
+    Text(text = "Welcome to $name")
 }
