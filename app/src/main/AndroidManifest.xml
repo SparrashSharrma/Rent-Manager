@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.rentmanager.appv2">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
         android:allowBackup="true"
@@ -10,9 +9,9 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.RentManager">
 
-        <!-- MAIN ACTIVITY CONFIGURATION -->
+        <!-- FULLY QUALIFIED ACTIVITY PATH -->
         <activity
-            android:name=".MainActivity"
+            android:name="com.rentmanager.app.MainActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -20,7 +19,7 @@
             </intent-filter>
         </activity>
 
-        <!-- FILE PROVIDER FOR PDF & EXCEL EXPORT -->
+        <!-- FILE PROVIDER FOR EXPORTS -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"
