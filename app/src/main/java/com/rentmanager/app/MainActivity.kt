@@ -16,6 +16,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -271,7 +272,7 @@ fun RentManagerExportApp() {
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    imageVector = Icons.Default.HomeWork,
+                                    imageVector = Icons.Default.Home,
                                     contentDescription = "Rent Manager",
                                     tint = Color.White,
                                     modifier = Modifier.size(24.dp)
@@ -298,7 +299,7 @@ fun RentManagerExportApp() {
                 actions = {
                     IconButton(onClick = { showBackupDialog = true }) {
                         Icon(
-                            Icons.Default.CloudUpload,
+                            Icons.Default.Share,
                             contentDescription = "Backup & Restore",
                             tint = Color(0xFFE65100)
                         )
@@ -537,7 +538,7 @@ fun RentManagerExportApp() {
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.CloudUpload, contentDescription = null)
+                        Icon(Icons.Default.Share, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Backup Data")
                     }
@@ -548,7 +549,7 @@ fun RentManagerExportApp() {
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.CloudDownload, contentDescription = null)
+                        Icon(Icons.Default.Share, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Restore Backup")
                     }
@@ -853,7 +854,7 @@ fun TenantTab(
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD84315)),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(Icons.Default.PictureAsPdf, contentDescription = "PDF", modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.Share, contentDescription = "PDF", modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(2.dp))
                                     Text("PDF", fontSize = 10.sp)
                                 }
@@ -862,7 +863,7 @@ fun TenantTab(
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(Icons.Default.TableChart, contentDescription = "Excel", modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.Share, contentDescription = "Excel", modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(2.dp))
                                     Text("Excel", fontSize = 10.sp)
                                 }
@@ -1327,7 +1328,7 @@ fun exportAllPaymentsCSV(context: Context, payments: List<PaymentEntity>) {
 }
 
 // ============================================================
-// 14. ADD & EDIT DIALOGS
+// 14. ADD & EDIT DIALOGS (CUSTOM STABLE DROPDOWN)
 // ============================================================
 
 @Composable
@@ -1385,7 +1386,6 @@ fun EditPropertyDialog(property: PropertyEntity, onDismiss: () -> Unit, onUpdate
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Unit, onAdd: (String, String, String, Double, Double, Double, Int, String, String, String) -> Unit) {
     var name by remember { mutableStateOf("") }
@@ -1408,16 +1408,29 @@ fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Uni
                 item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
                 item {
-                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
                             value = selectedShop,
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Select Vacant Shop") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                            trailingIcon = {
+                                IconButton(onClick = { expanded = !expanded }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable { expanded = true }
+                        )
+                        DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             vacantProperties.forEach { prop ->
                                 DropdownMenuItem(
                                     text = { Text("${prop.name} (₹${prop.rentAmount.toInt()})") },
@@ -1507,7 +1520,6 @@ fun EditTenantDialog(tenant: TenantEntity, allProperties: List<PropertyEntity>, 
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddPaymentDialog(tenants: List<TenantEntity>, onDismiss: () -> Unit, onAdd: (String, Double, String, String, String, String) -> Unit) {
     val currentMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
@@ -1528,16 +1540,29 @@ fun AddPaymentDialog(tenants: List<TenantEntity>, onDismiss: () -> Unit, onAdd: 
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
-                    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = !expanded }) {
+                    Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
                             value = if (selectedTenant.isNotBlank()) "$selectedTenant ($selectedTenantProperty)" else "",
                             onValueChange = {},
                             readOnly = true,
                             label = { Text("Select Tenant") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                            trailingIcon = {
+                                IconButton(onClick = { expanded = !expanded }) {
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
                         )
-                        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clickable { expanded = true }
+                        )
+                        DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
                             tenants.forEach { tenant ->
                                 DropdownMenuItem(
                                     text = { Text("${tenant.name} (${tenant.propertyName})") },
