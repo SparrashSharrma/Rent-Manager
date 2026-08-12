@@ -11,10 +11,15 @@ import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -33,6 +38,8 @@ import androidx.core.content.FileProvider
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -76,13 +83,16 @@ data class PaymentEntity(
 )
 
 // ==========================================
-// 2. ROOM DAO (WITH EDIT / UPDATE SUPPORT)
+// 2. ROOM DAO
 // ==========================================
 
 @Dao
 interface AppDao {
     @Query("SELECT * FROM properties")
     fun getAllProperties(): Flow<List<PropertyEntity>>
+
+    @Query("SELECT * FROM properties")
+    suspend fun getPropertyList(): List<PropertyEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProperty(property: PropertyEntity)
@@ -96,6 +106,9 @@ interface AppDao {
     @Query("SELECT * FROM tenants")
     fun getAllTenants(): Flow<List<TenantEntity>>
 
+    @Query("SELECT * FROM tenants")
+    suspend fun getTenantList(): List<TenantEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTenant(tenant: TenantEntity)
 
@@ -107,6 +120,9 @@ interface AppDao {
 
     @Query("SELECT * FROM payments")
     fun getAllPayments(): Flow<List<PaymentEntity>>
+
+    @Query("SELECT * FROM payments")
+    suspend fun getPaymentList(): List<PaymentEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPayment(payment: PaymentEntity)
@@ -129,7 +145,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "rent_manager_v3_db"
+                    "rent_manager_tript_db"
                 )
                 .fallbackToDestructiveMigration()
                 .build()
@@ -141,7 +157,7 @@ abstract class AppDatabase : RoomDatabase() {
 }
 
 // ==========================================
-// 4. MAIN ACTIVITY & SAFFRON-GOLDEN THEME
+// 4. MAIN ACTIVITY & BRANDED THEME
 // ==========================================
 
 class MainActivity : ComponentActivity() {
@@ -185,17 +201,53 @@ fun RentManagerExportApp() {
     var showAddPropertyDialog by remember { mutableStateOf(false) }
     var showAddTenantDialog by remember { mutableStateOf(false) }
     var showAddPaymentDialog by remember { mutableStateOf(false) }
+    var showBackupDialog by remember { mutableStateOf(false) }
 
     var propertyToEdit by remember { mutableStateOf<PropertyEntity?>(null) }
     var tenantToEdit by remember { mutableStateOf<TenantEntity?>(null) }
+
+    val restoreFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            coroutineScope.launch {
+                restoreFromBackupJson(context, dao, it)
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Column {
-                        Text("Rent Manager Pro", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = Color(0xFF4E342E))
-                        Text("Developer: Sparrash Sharrma", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFD84315))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // BRAND LOGO BADGE
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFFE65100),
+                            modifier = Modifier
+                                .size(42.dp)
+                                .border(1.5.dp, Color(0xFFFFB300), RoundedCornerShape(10.dp))
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.HomeWork,
+                                    contentDescription = "Tript Enterprise Logo",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text("Rent Manager", fontWeight = FontWeight.Bold, fontSize = 19.sp, color = Color(0xFF4E342E))
+                            Text("by Tript Enterprise", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFD84315))
+                        }
+                    }
+                },
+                actions = {
+                    IconButton(onClick = { showBackupDialog = true }) {
+                        Icon(Icons.Default.CloudUpload, contentDescription = "Backup & Sync", tint = Color(0xFFE65100))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
@@ -277,7 +329,6 @@ fun RentManagerExportApp() {
         }
     }
 
-    // Add Dialogs
     if (showAddPropertyDialog) {
         AddPropertyDialog(
             onDismiss = { showAddPropertyDialog = false },
@@ -317,7 +368,6 @@ fun RentManagerExportApp() {
         )
     }
 
-    // Edit Dialogs
     propertyToEdit?.let { prop ->
         EditPropertyDialog(
             property = prop,
@@ -342,6 +392,45 @@ fun RentManagerExportApp() {
             }
         )
     }
+
+    if (showBackupDialog) {
+        AlertDialog(
+            onDismissRequest = { showBackupDialog = false },
+            title = { Text("Backup & Restore Data") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Save your database to Google Drive / Storage or Restore from a backup file.")
+                    Button(
+                        onClick = {
+                            coroutineScope.launch { exportBackupJson(context, dao) }
+                            showBackupDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CloudUpload, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Backup to Drive / Storage")
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            restoreFileLauncher.launch("application/json")
+                            showBackupDialog = false
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Restore Backup File")
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showBackupDialog = false }) { Text("Close") }
+            }
+        )
+    }
 }
 
 // ==========================================
@@ -358,6 +447,14 @@ fun DashboardScreen(properties: List<PropertyEntity>, tenants: List<TenantEntity
     val vacantShops = properties.count { !it.isOccupied }
     val collectionPercentage = if (totalExpected > 0) ((totalReceived / totalExpected) * 100).coerceAtMost(100.0) else 0.0
 
+    var paidCount = 0
+    var overdueCount = 0
+    tenants.forEach { tenant ->
+        val paid = payments.filter { it.tenantName.equals(tenant.name, ignoreCase = true) }.sumOf { it.amount }
+        val due = tenant.monthlyRent + tenant.previousDues
+        if (due - paid <= 0) paidCount++ else overdueCount++
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Text("Overview & Financials", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
         Spacer(modifier = Modifier.height(12.dp))
@@ -370,6 +467,12 @@ fun DashboardScreen(properties: List<PropertyEntity>, tenants: List<TenantEntity
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard("Total Pending Dues", "₹${pendingAmount.toInt()}", Color(0xFFC62828), Modifier.weight(1f))
             MetricCard("Vacant Shops", "$vacantShops", Color(0xFFFF8F00), Modifier.weight(1f))
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            MetricCard("Paid Tenants", "$paidCount", Color(0xFF2E7D32), Modifier.weight(1f))
+            MetricCard("Overdue Tenants", "$overdueCount", Color(0xFFC62828), Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -393,14 +496,14 @@ fun DashboardScreen(properties: List<PropertyEntity>, tenants: List<TenantEntity
 fun MetricCard(title: String, value: String, color: Color, modifier: Modifier = Modifier) {
     Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.12f))) {
         Column(modifier = Modifier.padding(12.dp)) {
-            Text(title, fontSize = 12.sp, color = Color.DarkGray)
+            Text(title, fontSize = 11.sp, color = Color.DarkGray)
             Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
         }
     }
 }
 
 // ==========================================
-// 6. TABS WITH SEARCH & EDIT ACTIONS
+// 6. TABS WITH MONTHLY STATUS BADGES
 // ==========================================
 
 @Composable
@@ -484,10 +587,26 @@ fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onEdit
                     val totalDue = tenant.monthlyRent + tenant.previousDues
                     val balance = (totalDue - totalPaid).coerceAtLeast(0.0)
 
+                    val (statusLabel, statusColor) = when {
+                        balance <= 0 -> "PAID" to Color(0xFF2E7D32)
+                        totalPaid > 0 -> "PARTIAL" to Color(0xFFFF8F00)
+                        else -> "OVERDUE" to Color(0xFFC62828)
+                    }
+
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                Text(tenant.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(tenant.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .background(statusColor.copy(alpha = 0.15f), shape = RoundedCornerShape(4.dp))
+                                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(statusLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = statusColor)
+                                    }
+                                }
                                 Row {
                                     IconButton(onClick = { onEdit(tenant) }) {
                                         Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
@@ -504,7 +623,7 @@ fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onEdit
                             Text("Due Day: ${tenant.dueDayOfMonth}th | Agreement: ${tenant.agreementStart} to ${tenant.agreementEnd}", fontSize = 12.sp, color = Color.Gray)
 
                             Spacer(modifier = Modifier.height(10.dp))
-                            
+
                             val msg = StringBuilder().apply {
                                 append("Hello ${tenant.name},\n")
                                 append("Rent reminder for ${tenant.propertyName}:\n")
@@ -611,7 +730,7 @@ fun PaymentTab(payments: List<PaymentEntity>) {
 }
 
 // ==========================================
-// 7. EXPORT & HELPER FUNCTIONS
+// 7. EXPORT, REMINDERS & BACKUP / RESTORE
 // ==========================================
 
 fun sendWhatsApp(context: Context, phone: String, message: String) {
@@ -635,6 +754,141 @@ fun copyToClipboard(context: Context, text: String) {
     val clip = ClipData.newPlainText("Rent Reminder", text)
     clipboard.setPrimaryClip(clip)
     Toast.makeText(context, "Reminder text copied!", Toast.LENGTH_SHORT).show()
+}
+
+suspend fun exportBackupJson(context: Context, dao: AppDao) {
+    try {
+        val props = dao.getPropertyList()
+        val tenants = dao.getTenantList()
+        val payments = dao.getPaymentList()
+
+        val rootObj = JSONObject()
+
+        val propsArr = JSONArray()
+        props.forEach { p ->
+            val obj = JSONObject()
+            obj.put("id", p.id)
+            obj.put("name", p.name)
+            obj.put("type", p.type)
+            obj.put("rentAmount", p.rentAmount)
+            obj.put("isOccupied", p.isOccupied)
+            propsArr.put(obj)
+        }
+        rootObj.put("properties", propsArr)
+
+        val tenantArr = JSONArray()
+        tenants.forEach { t ->
+            val obj = JSONObject()
+            obj.put("id", t.id)
+            obj.put("name", t.name)
+            obj.put("phone", t.phone)
+            obj.put("propertyName", t.propertyName)
+            obj.put("monthlyRent", t.monthlyRent)
+            obj.put("previousDues", t.previousDues)
+            obj.put("securityDeposit", t.securityDeposit)
+            obj.put("dueDayOfMonth", t.dueDayOfMonth)
+            obj.put("agreementStart", t.agreementStart)
+            obj.put("agreementEnd", t.agreementEnd)
+            obj.put("idProofNote", t.idProofNote)
+            tenantArr.put(obj)
+        }
+        rootObj.put("tenants", tenantArr)
+
+        val payArr = JSONArray()
+        payments.forEach { pay ->
+            val obj = JSONObject()
+            obj.put("id", pay.id)
+            obj.put("tenantName", pay.tenantName)
+            obj.put("amount", pay.amount)
+            obj.put("date", pay.date)
+            obj.put("mode", pay.mode)
+            payArr.put(obj)
+        }
+        rootObj.put("payments", payArr)
+
+        val fileName = "RentManager_Backup_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.json"
+        val file = File(context.cacheDir, fileName)
+        file.writeText(rootObj.toString())
+
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/json"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(Intent.createChooser(shareIntent, "Save Backup to Drive or Storage"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "Backup Error: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
+}
+
+suspend fun restoreFromBackupJson(context: Context, dao: AppDao, uri: Uri) {
+    try {
+        val inputStream = context.contentResolver.openInputStream(uri)
+        val jsonStr = inputStream?.bufferedReader()?.use { it.readText() } ?: ""
+
+        if (jsonStr.isNotBlank()) {
+            val rootObj = JSONObject(jsonStr)
+
+            if (rootObj.has("properties")) {
+                val propsArr = rootObj.getJSONArray("properties")
+                for (i in 0 until propsArr.length()) {
+                    val obj = propsArr.getJSONObject(i)
+                    dao.insertProperty(
+                        PropertyEntity(
+                            id = obj.optInt("id", 0),
+                            name = obj.getString("name"),
+                            type = obj.getString("type"),
+                            rentAmount = obj.getDouble("rentAmount"),
+                            isOccupied = obj.getBoolean("isOccupied")
+                        )
+                    )
+                }
+            }
+
+            if (rootObj.has("tenants")) {
+                val tenantArr = rootObj.getJSONArray("tenants")
+                for (i in 0 until tenantArr.length()) {
+                    val obj = tenantArr.getJSONObject(i)
+                    dao.insertTenant(
+                        TenantEntity(
+                            id = obj.optInt("id", 0),
+                            name = obj.getString("name"),
+                            phone = obj.getString("phone"),
+                            propertyName = obj.getString("propertyName"),
+                            monthlyRent = obj.getDouble("monthlyRent"),
+                            previousDues = obj.optDouble("previousDues", 0.0),
+                            securityDeposit = obj.getDouble("securityDeposit"),
+                            dueDayOfMonth = obj.optInt("dueDayOfMonth", 5),
+                            agreementStart = obj.optString("agreementStart", ""),
+                            agreementEnd = obj.optString("agreementEnd", ""),
+                            idProofNote = obj.optString("idProofNote", "")
+                        )
+                    )
+                }
+            }
+
+            if (rootObj.has("payments")) {
+                val payArr = rootObj.getJSONArray("payments")
+                for (i in 0 until payArr.length()) {
+                    val obj = payArr.getJSONObject(i)
+                    dao.insertPayment(
+                        PaymentEntity(
+                            id = obj.optInt("id", 0),
+                            tenantName = obj.getString("tenantName"),
+                            amount = obj.getDouble("amount"),
+                            date = obj.getString("date"),
+                            mode = obj.getString("mode")
+                        )
+                    )
+                }
+            }
+
+            Toast.makeText(context, "Database Restored Successfully!", Toast.LENGTH_LONG).show()
+        }
+    } catch (e: Exception) {
+        Toast.makeText(context, "Restore Error: ${e.message}", Toast.LENGTH_SHORT).show()
+    }
 }
 
 fun exportTenantPDF(context: Context, tenant: TenantEntity, tenantPayments: List<PaymentEntity>) {
