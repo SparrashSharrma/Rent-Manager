@@ -239,7 +239,7 @@ fun RentManagerExportApp() {
     val tenants by dao.getAllTenants().collectAsState(initial = emptyList())
     val payments by dao.getAllPayments().collectAsState(initial = emptyList())
 
-    var selectedTab by rememberSaveable { mutableIntStateOf(0) }
+    var selectedTab by rememberSaveable { mutableStateOf(0) }
     var showAddPropertyDialog by remember { mutableStateOf(false) }
     var showAddTenantDialog by remember { mutableStateOf(false) }
     var showAddPaymentDialog by remember { mutableStateOf(false) }
@@ -315,7 +315,7 @@ fun RentManagerExportApp() {
                 NavigationBarItem(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Default.Dashboard, contentDescription = "Dashboard") },
+                    icon = { Icon(Icons.Default.Info, contentDescription = "Dashboard") },
                     label = { Text("Dashboard") }
                 )
                 NavigationBarItem(
@@ -333,7 +333,7 @@ fun RentManagerExportApp() {
                 NavigationBarItem(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
-                    icon = { Icon(Icons.Default.Payments, contentDescription = "Payments") },
+                    icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Payments") },
                     label = { Text("Payments") }
                 )
             }
@@ -633,7 +633,7 @@ fun DashboardScreen(
                 Text("Collection Rate", fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
                 Spacer(modifier = Modifier.height(8.dp))
                 LinearProgressIndicator(
-                    progress = { (collectionPercentage / 100).toFloat() },
+                    progress = (collectionPercentage / 100).toFloat(),
                     modifier = Modifier.fillMaxWidth().height(10.dp),
                     color = MaterialTheme.colorScheme.primary,
                 )
