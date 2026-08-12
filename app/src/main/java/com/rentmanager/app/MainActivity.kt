@@ -333,7 +333,7 @@ fun RentManagerExportApp() {
                 NavigationBarItem(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
-                    icon = { Icon(Icons.Default.ShoppingCart, contentDescription = "Payments") },
+                    icon = { Icon(Icons.Default.List, contentDescription = "Payments") },
                     label = { Text("Payments") }
                 )
             }
@@ -632,11 +632,23 @@ fun DashboardScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Collection Rate", fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
                 Spacer(modifier = Modifier.height(8.dp))
-                LinearProgressIndicator(
-                    progress = (collectionPercentage / 100).toFloat(),
-                    modifier = Modifier.fillMaxWidth().height(10.dp),
-                    color = MaterialTheme.colorScheme.primary,
-                )
+                
+                // STABLE CUSTOM PROGRESS BAR
+                val progressFraction = (collectionPercentage / 100).toFloat().coerceIn(0f, 1f)
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(10.dp)
+                        .background(Color.LightGray, RoundedCornerShape(5.dp))
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(progressFraction)
+                            .fillMaxHeight()
+                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(5.dp))
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(6.dp))
                 Text("%.1f%% Collected".format(collectionPercentage), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE65100))
             }
