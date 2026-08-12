@@ -299,7 +299,7 @@ fun RentManagerExportApp() {
                 actions = {
                     IconButton(onClick = { showBackupDialog = true }) {
                         Icon(
-                            Icons.Default.Share,
+                            Icons.Default.MoreVert,
                             contentDescription = "Backup & Restore",
                             tint = Color(0xFFE65100)
                         )
@@ -315,13 +315,13 @@ fun RentManagerExportApp() {
                 NavigationBarItem(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Default.Info, contentDescription = "Dashboard") },
+                    icon = { Icon(Icons.Default.Home, contentDescription = "Dashboard") },
                     label = { Text("Dashboard") }
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Default.Home, contentDescription = "Shops") },
+                    icon = { Icon(Icons.Default.Search, contentDescription = "Shops") },
                     label = { Text("Shops") }
                 )
                 NavigationBarItem(
@@ -333,7 +333,7 @@ fun RentManagerExportApp() {
                 NavigationBarItem(
                     selected = selectedTab == 3,
                     onClick = { selectedTab = 3 },
-                    icon = { Icon(Icons.Default.List, contentDescription = "Payments") },
+                    icon = { Icon(Icons.Default.MoreVert, contentDescription = "Payments") },
                     label = { Text("Payments") }
                 )
             }
@@ -538,7 +538,7 @@ fun RentManagerExportApp() {
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = null)
+                        Icon(Icons.Default.Send, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Backup Data")
                     }
@@ -549,7 +549,7 @@ fun RentManagerExportApp() {
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.Share, contentDescription = null)
+                        Icon(Icons.Default.Send, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Restore Backup")
                     }
@@ -632,8 +632,7 @@ fun DashboardScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Text("Collection Rate", fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
                 Spacer(modifier = Modifier.height(8.dp))
-                
-                // STABLE CUSTOM PROGRESS BAR
+
                 val progressFraction = (collectionPercentage / 100).toFloat().coerceIn(0f, 1f)
                 Box(
                     modifier = Modifier
@@ -866,7 +865,7 @@ fun TenantTab(
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD84315)),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(Icons.Default.Share, contentDescription = "PDF", modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.Send, contentDescription = "PDF", modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(2.dp))
                                     Text("PDF", fontSize = 10.sp)
                                 }
@@ -875,7 +874,7 @@ fun TenantTab(
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(Icons.Default.Share, contentDescription = "Excel", modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.Check, contentDescription = "Excel", modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(2.dp))
                                     Text("Excel", fontSize = 10.sp)
                                 }
