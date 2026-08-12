@@ -191,7 +191,7 @@ abstract class AppDatabase : RoomDatabase() {
 }
 
 // ============================================================
-// 4. MAIN ACTIVITY
+// 4. MAIN ACTIVITY & COLOR PALETTE
 // ============================================================
 
 class MainActivity : ComponentActivity() {
@@ -200,12 +200,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-
+            // SAFFRON + GOLDEN + YELLOW + RED THEME
             val saffronPrimary = Color(0xFFE65100)
             val saffronContainer = Color(0xFFFFE0B2)
-            val goldenSecondary = Color(0xFFFF8F00)
+            val goldenSecondary = Color(0xFFFFB300)
             val goldenContainer = Color(0xFFFFF8E1)
-            val backgroundSurface = Color(0xFFFFFDF9)
+            val backgroundSurface = Color(0xFFFFFDF8)
 
             MaterialTheme(
                 colorScheme = lightColorScheme(
@@ -268,30 +268,45 @@ fun RentManagerExportApp() {
                             color = Color(0xFFE65100),
                             modifier = Modifier
                                 .size(42.dp)
-                                .border(1.5.dp, Color(0xFFFFB300), RoundedCornerShape(10.dp))
+                                .border(2.dp, Color(0xFFFFD54F), RoundedCornerShape(10.dp))
                         ) {
                             Box(contentAlignment = Alignment.Center) {
                                 Icon(
                                     imageVector = Icons.Default.Home,
                                     contentDescription = "Rent Manager",
-                                    tint = Color.White,
+                                    tint = Color(0xFFFFF59D),
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
                         }
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    "Rent Manager",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    color = Color(0xFF3E2723)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Surface(
+                                    color = Color(0xFFD32F2F),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        "v1.3.3.3",
+                                        color = Color.White,
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
                             Text(
-                                "Rent Manager",
+                                "Dev: Sparash Ram Sharma",
+                                fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 19.sp,
-                                color = Color(0xFF4E342E)
-                            )
-                            Text(
-                                "by Tript Enterprise",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFFD84315)
+                                color = Color(0xFFE65100)
                             )
                         }
                     }
@@ -360,9 +375,10 @@ fun RentManagerExportApp() {
                             }
                         }
                     },
-                    containerColor = MaterialTheme.colorScheme.primary
+                    containerColor = Color(0xFFE65100),
+                    contentColor = Color.White
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Add", tint = Color.White)
+                    Icon(Icons.Default.Add, contentDescription = "Add")
                 }
             }
         }
@@ -527,7 +543,7 @@ fun RentManagerExportApp() {
     if (showBackupDialog) {
         AlertDialog(
             onDismissRequest = { showBackupDialog = false },
-            title = { Text("Backup & Restore Data") },
+            title = { Text("Backup & Restore Data", color = Color(0xFF3E2723), fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Backup your shops, tenants and payment records.")
@@ -536,22 +552,38 @@ fun RentManagerExportApp() {
                             coroutineScope.launch { exportBackupJson(context, dao) }
                             showBackupDialog = false
                         },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Icon(Icons.Default.Send, contentDescription = null)
+                        Icon(Icons.Default.Send, contentDescription = null, tint = Color.White)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Backup Data")
+                        Text("Backup Data", color = Color.White)
                     }
                     OutlinedButton(
                         onClick = {
                             restoreFileLauncher.launch("application/json")
                             showBackupDialog = false
                         },
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF8F00)),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Icon(Icons.Default.Send, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Restore Backup")
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFFFF8E1), RoundedCornerShape(6.dp))
+                            .padding(8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "App Version: 1.3.3.3 | Dev: Sparash Ram Sharma",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFE65100)
+                        )
                     }
                 }
             },
@@ -603,54 +635,95 @@ fun DashboardScreen(
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Overview & Financials", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            "Current Month: ${SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date())}",
-            fontSize = 13.sp,
-            color = Color.Gray
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text("Overview & Financials", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2723))
+                Text(
+                    "Current Month: ${SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date())}",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
+            }
+            Surface(
+                color = Color(0xFFFFF176),
+                shape = RoundedCornerShape(20.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFBC02D))
+            ) {
+                Text(
+                    "v1.3.3.3",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFE65100),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(12.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard("Expected Rent + Previous Dues", "₹${totalExpected.toInt()}", Color(0xFFE65100), Modifier.weight(1f))
+            MetricCard("Expected Rent + Dues", "₹${totalExpected.toInt()}", Color(0xFFE65100), Modifier.weight(1f))
             MetricCard("Received This Month", "₹${totalReceivedCurrentMonth.toInt()}", Color(0xFF2E7D32), Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard("Total Pending", "₹${pendingAmount.toInt()}", Color(0xFFC62828), Modifier.weight(1f))
+            MetricCard("Total Pending", "₹${pendingAmount.toInt()}", Color(0xFFD32F2F), Modifier.weight(1f))
             MetricCard("Vacant Shops", "$vacantShops", Color(0xFFFF8F00), Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             MetricCard("Paid Tenants", "$paidCount", Color(0xFF2E7D32), Modifier.weight(1f))
-            MetricCard("Overdue Tenants", "$overdueCount", Color(0xFFC62828), Modifier.weight(1f))
+            MetricCard("Overdue Tenants", "$overdueCount", Color(0xFFD32F2F), Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(16.dp))
-        Card(modifier = Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFE082))
+        ) {
             Column(modifier = Modifier.padding(16.dp)) {
-                Text("Collection Rate", fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("Collection Rate", fontWeight = FontWeight.Bold, color = Color(0xFF3E2723))
+                    Text("%.1f%%".format(collectionPercentage), fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                }
                 Spacer(modifier = Modifier.height(8.dp))
 
                 val progressFraction = (collectionPercentage / 100).toFloat().coerceIn(0f, 1f)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(10.dp)
-                        .background(Color.LightGray, RoundedCornerShape(5.dp))
+                        .height(12.dp)
+                        .background(Color(0xFFFFECB3), RoundedCornerShape(6.dp))
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth(progressFraction)
                             .fillMaxHeight()
-                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(5.dp))
+                            .background(Color(0xFFE65100), RoundedCornerShape(6.dp))
                     )
                 }
-
-                Spacer(modifier = Modifier.height(6.dp))
-                Text("%.1f%% Collected".format(collectionPercentage), fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE65100))
             }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+        Box(
+            modifier = Modifier.fillMaxWidth(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                "Developed by Sparash Ram Sharma",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF8D6E63)
+            )
         }
     }
 }
@@ -661,7 +734,11 @@ fun DashboardScreen(
 
 @Composable
 fun MetricCard(title: String, value: String, color: Color, modifier: Modifier = Modifier) {
-    Card(modifier = modifier, colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.12f))) {
+    Card(
+        modifier = modifier,
+        colors = CardDefaults.cardColors(containerColor = color.copy(alpha = 0.1f)),
+        border = androidx.compose.foundation.BorderStroke(1.dp, color.copy(alpha = 0.3f))
+    ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(title, fontSize = 11.sp, color = Color.DarkGray)
             Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
@@ -685,14 +762,14 @@ fun PropertyTab(
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Shops & Properties (${properties.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
+        Text("Shops & Properties (${properties.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2723))
         Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
             label = { Text("Search Shop...") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFFE65100)) },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -705,35 +782,54 @@ fun PropertyTab(
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(filteredProperties) { prop ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFDE7))
+                    ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Text(prop.name, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(prop.name, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF3E2723))
+                                Surface(
+                                    color = if (prop.isOccupied) Color(0xFFE8F5E9) else Color(0xFFFFEBEE),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        if (prop.isOccupied) "Occupied" else "Vacant",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (prop.isOccupied) Color(0xFF2E7D32) else Color(0xFFD32F2F),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
                             Text("Type: ${prop.type} | Rent: ₹${prop.rentAmount.toInt()}", fontSize = 13.sp, color = Color.Gray)
-                            Text(
-                                if (prop.isOccupied) "Status: Occupied" else "Status: Vacant",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = if (prop.isOccupied) Color(0xFF2E7D32) else Color(0xFFD32F2F)
-                            )
 
                             Spacer(modifier = Modifier.height(10.dp))
-                            Box(modifier = Modifier.fillMaxWidth().height(0.8.dp).background(Color.LightGray))
+                            Box(modifier = Modifier.fillMaxWidth().height(0.8.dp).background(Color(0xFFFFE082)))
                             Spacer(modifier = Modifier.height(8.dp))
 
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(onClick = { onEdit(prop) }, modifier = Modifier.weight(1f)) {
+                                Button(
+                                    onClick = { onEdit(prop) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
                                     Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
                                     Text("Edit Shop", fontSize = 12.sp)
                                 }
                                 OutlinedButton(
                                     onClick = { onDelete(prop) },
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFD32F2F)),
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFD32F2F), modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(4.dp))
-                                    Text("Delete", fontSize = 12.sp, color = Color.Red)
+                                    Text("Delete", fontSize = 12.sp, color = Color(0xFFD32F2F))
                                 }
                             }
                         }
@@ -766,14 +862,14 @@ fun TenantTab(
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Tenants (${tenants.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
+        Text("Tenants (${tenants.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2723))
         Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
             label = { Text("Search Tenant or Shop...") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFFE65100)) },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -796,14 +892,17 @@ fun TenantTab(
                     val status = when {
                         balance <= 0 -> "PAID" to Color(0xFF2E7D32)
                         totalPaidThisMonth > 0 -> "PARTIAL" to Color(0xFFFF8F00)
-                        else -> "OVERDUE" to Color(0xFFC62828)
+                        else -> "OVERDUE" to Color(0xFFD32F2F)
                     }
 
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFDE7))
+                    ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(tenant.name, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                                    Text(tenant.name, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF3E2723))
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Box(
                                         modifier = Modifier
@@ -817,12 +916,12 @@ fun TenantTab(
 
                             Spacer(modifier = Modifier.height(4.dp))
                             Text("Phone: ${tenant.phone}", fontSize = 13.sp)
-                            Text("Shop: ${tenant.propertyName}", fontSize = 13.sp)
+                            Text("Shop: ${tenant.propertyName}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE65100))
                             Text("Monthly Rent: ₹${tenant.monthlyRent.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
                             Text("Previous Dues: ₹${tenant.previousDues.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
                             Text("Security Deposit: ₹${tenant.securityDeposit.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
                             Text("Paid This Month: ₹${totalPaidThisMonth.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
-                            Text("Pending: ₹${balance.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (balance > 0) Color(0xFFC62828) else Color(0xFF2E7D32))
+                            Text("Pending: ₹${balance.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (balance > 0) Color(0xFFD32F2F) else Color(0xFF2E7D32))
                             Text("Total Historical Paid: ₹${totalHistoricalPaid.toInt()}", fontSize = 12.sp, color = Color.Gray)
                             Text("Rent Due: ${ordinalDay(tenant.dueDayOfMonth)} of every month", fontSize = 12.sp, color = Color.Gray)
                             Text("Agreement: ${tenant.agreementStart} to ${tenant.agreementEnd}", fontSize = 12.sp, color = Color.Gray)
@@ -842,8 +941,12 @@ fun TenantTab(
                                     Spacer(modifier = Modifier.width(3.dp))
                                     Text("WhatsApp", fontSize = 10.sp, color = Color.White)
                                 }
-                                Button(onClick = { sendSMS(context, tenant.phone, msg) }, modifier = Modifier.weight(0.75f)) {
-                                    Text("SMS", fontSize = 10.sp)
+                                Button(
+                                    onClick = { sendSMS(context, tenant.phone, msg) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8F00)),
+                                    modifier = Modifier.weight(0.75f)
+                                ) {
+                                    Text("SMS", fontSize = 10.sp, color = Color.White)
                                 }
                                 OutlinedButton(onClick = { copyToClipboard(context, msg) }, modifier = Modifier.weight(1f)) {
                                     Text("Copy", fontSize = 10.sp)
@@ -851,18 +954,22 @@ fun TenantTab(
                             }
 
                             Spacer(modifier = Modifier.height(8.dp))
-                            Box(modifier = Modifier.fillMaxWidth().height(0.8.dp).background(Color.LightGray))
+                            Box(modifier = Modifier.fillMaxWidth().height(0.8.dp).background(Color(0xFFFFE082)))
                             Spacer(modifier = Modifier.height(8.dp))
 
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
-                                Button(onClick = { onEdit(tenant) }, modifier = Modifier.weight(1f)) {
+                                Button(
+                                    onClick = { onEdit(tenant) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                                    modifier = Modifier.weight(1f)
+                                ) {
                                     Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(14.dp))
                                     Spacer(modifier = Modifier.width(2.dp))
                                     Text("Edit", fontSize = 10.sp)
                                 }
                                 Button(
                                     onClick = { exportTenantPDF(context, tenant, tenantPayments) },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD84315)),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD32F2F)),
                                     modifier = Modifier.weight(1f)
                                 ) {
                                     Icon(Icons.Default.Send, contentDescription = "PDF", modifier = Modifier.size(14.dp))
@@ -880,10 +987,10 @@ fun TenantTab(
                                 }
                                 OutlinedButton(
                                     onClick = { onDelete(tenant) },
-                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.Red),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFD32F2F)),
                                     modifier = Modifier.weight(0.65f)
                                 ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red, modifier = Modifier.size(14.dp))
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFD32F2F), modifier = Modifier.size(14.dp))
                                 }
                             }
                         }
@@ -918,14 +1025,14 @@ fun PaymentTab(payments: List<PaymentEntity>) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column {
-                Text("Payment History (${payments.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4E342E))
+                Text("Payment History (${payments.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2723))
                 Text("Showing: ₹${total.toInt()}", fontSize = 12.sp, color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold)
             }
             Button(
                 onClick = { exportAllPaymentsCSV(context, payments) },
-                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8F00))
             ) {
-                Text("All CSV", fontSize = 10.sp)
+                Text("All CSV", fontSize = 10.sp, color = Color.White)
             }
         }
 
@@ -935,7 +1042,7 @@ fun PaymentTab(payments: List<PaymentEntity>) {
             value = searchQuery,
             onValueChange = { searchQuery = it },
             label = { Text("Search Payment...") },
-            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFFE65100)) },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -948,14 +1055,17 @@ fun PaymentTab(payments: List<PaymentEntity>) {
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(filteredPayments) { pay ->
-                    Card(modifier = Modifier.fillMaxWidth()) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFDE7))
+                    ) {
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(16.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(pay.tenantName, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text(pay.tenantName, fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF3E2723))
                                 Text("Rent Month: ${formatRentMonth(pay.rentMonth)}", fontSize = 12.sp, color = Color.DarkGray)
                                 Text("Date: ${pay.date}", fontSize = 12.sp, color = Color.Gray)
                                 Text("Mode: ${pay.mode}", fontSize = 12.sp, color = Color.Gray)
@@ -1023,7 +1133,7 @@ fun buildRentReminderMessage(tenant: TenantEntity, balance: Double): String {
         append("• Due Date: ${ordinalDay(tenant.dueDayOfMonth)} of every month\n\n")
         append("Please make the payment at the earliest.\n\n")
         append("Thank you.\n")
-        append("Rent Manager - Tript Enterprise")
+        append("Rent Manager - Dev: Sparash Ram Sharma")
     }
 }
 
@@ -1039,6 +1149,8 @@ suspend fun exportBackupJson(context: Context, dao: AppDao) {
 
         val rootObj = JSONObject()
         rootObj.put("backupVersion", 3)
+        rootObj.put("appVersion", "1.3.3.3")
+        rootObj.put("developer", "Sparash Ram Sharma")
         rootObj.put("backupDate", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
 
         val propsArr = JSONArray()
@@ -1350,7 +1462,7 @@ fun AddPropertyDialog(onDismiss: () -> Unit, onAdd: (String, String, Double) -> 
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Shop/Property") },
+        title = { Text("Add Shop/Property", color = Color(0xFF3E2723), fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Shop Name") }, modifier = Modifier.fillMaxWidth())
@@ -1359,11 +1471,14 @@ fun AddPropertyDialog(onDismiss: () -> Unit, onAdd: (String, String, Double) -> 
             }
         },
         confirmButton = {
-            Button(onClick = {
-                if (name.isNotBlank() && rent.toDoubleOrNull() != null) {
-                    onAdd(name, type, rent.toDouble())
-                }
-            }) { Text("Save") }
+            Button(
+                onClick = {
+                    if (name.isNotBlank() && rent.toDoubleOrNull() != null) {
+                        onAdd(name, type, rent.toDouble())
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
+            ) { Text("Save", color = Color.White) }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
     )
@@ -1377,7 +1492,7 @@ fun EditPropertyDialog(property: PropertyEntity, onDismiss: () -> Unit, onUpdate
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit Shop Details") },
+        title = { Text("Edit Shop Details", color = Color(0xFF3E2723), fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Shop Name") }, modifier = Modifier.fillMaxWidth())
@@ -1386,12 +1501,15 @@ fun EditPropertyDialog(property: PropertyEntity, onDismiss: () -> Unit, onUpdate
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val newRent = rent.toDoubleOrNull() ?: property.rentAmount
-                if (name.isNotBlank()) {
-                    onUpdate(property.copy(name = name.trim(), type = type.trim(), rentAmount = newRent))
-                }
-            }) { Text("Update") }
+            Button(
+                onClick = {
+                    val newRent = rent.toDoubleOrNull() ?: property.rentAmount
+                    if (name.isNotBlank()) {
+                        onUpdate(property.copy(name = name.trim(), type = type.trim(), rentAmount = newRent))
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
+            ) { Text("Update", color = Color.White) }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
     )
@@ -1413,7 +1531,7 @@ fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Uni
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Add Tenant") },
+        title = { Text("Add Tenant", color = Color(0xFF3E2723), fontWeight = FontWeight.Bold) },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
@@ -1465,13 +1583,16 @@ fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Uni
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val parsedRent = rent.toDoubleOrNull()
-                val parsedDueDay = dueDay.toIntOrNull()
-                if (name.isNotBlank() && selectedShop.isNotBlank() && parsedRent != null) {
-                    onAdd(name, phone, selectedShop, parsedRent, prevDues.toDoubleOrNull() ?: 0.0, deposit.toDoubleOrNull() ?: 0.0, parsedDueDay?.coerceIn(1, 31) ?: 5, start, end, idProof)
-                }
-            }) { Text("Save Tenant") }
+            Button(
+                onClick = {
+                    val parsedRent = rent.toDoubleOrNull()
+                    val parsedDueDay = dueDay.toIntOrNull()
+                    if (name.isNotBlank() && selectedShop.isNotBlank() && parsedRent != null) {
+                        onAdd(name, phone, selectedShop, parsedRent, prevDues.toDoubleOrNull() ?: 0.0, deposit.toDoubleOrNull() ?: 0.0, parsedDueDay?.coerceIn(1, 31) ?: 5, start, end, idProof)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
+            ) { Text("Save Tenant", color = Color.White) }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
     )
@@ -1492,7 +1613,7 @@ fun EditTenantDialog(tenant: TenantEntity, allProperties: List<PropertyEntity>, 
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit Tenant Details") },
+        title = { Text("Edit Tenant Details", color = Color(0xFF3E2723), fontWeight = FontWeight.Bold) },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
@@ -1508,24 +1629,27 @@ fun EditTenantDialog(tenant: TenantEntity, allProperties: List<PropertyEntity>, 
             }
         },
         confirmButton = {
-            Button(onClick = {
-                if (name.isNotBlank()) {
-                    onUpdate(
-                        tenant.copy(
-                            name = name.trim(),
-                            phone = phone.trim(),
-                            propertyName = shopName.trim(),
-                            monthlyRent = rent.toDoubleOrNull() ?: tenant.monthlyRent,
-                            previousDues = prevDues.toDoubleOrNull() ?: tenant.previousDues,
-                            securityDeposit = deposit.toDoubleOrNull() ?: tenant.securityDeposit,
-                            dueDayOfMonth = (dueDay.toIntOrNull() ?: tenant.dueDayOfMonth).coerceIn(1, 31),
-                            agreementStart = start.trim(),
-                            agreementEnd = end.trim(),
-                            idProofNote = idProof.trim()
+            Button(
+                onClick = {
+                    if (name.isNotBlank()) {
+                        onUpdate(
+                            tenant.copy(
+                                name = name.trim(),
+                                phone = phone.trim(),
+                                propertyName = shopName.trim(),
+                                monthlyRent = rent.toDoubleOrNull() ?: tenant.monthlyRent,
+                                previousDues = prevDues.toDoubleOrNull() ?: tenant.previousDues,
+                                securityDeposit = deposit.toDoubleOrNull() ?: tenant.securityDeposit,
+                                dueDayOfMonth = (dueDay.toIntOrNull() ?: tenant.dueDayOfMonth).coerceIn(1, 31),
+                                agreementStart = start.trim(),
+                                agreementEnd = end.trim(),
+                                idProofNote = idProof.trim()
+                            )
                         )
-                    )
-                }
-            }) { Text("Update Tenant") }
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
+            ) { Text("Update Tenant", color = Color.White) }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
     )
@@ -1547,7 +1671,7 @@ fun AddPaymentDialog(tenants: List<TenantEntity>, onDismiss: () -> Unit, onAdd: 
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Record Rent Payment") },
+        title = { Text("Record Rent Payment", color = Color(0xFF3E2723), fontWeight = FontWeight.Bold) },
         text = {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item {
@@ -1596,12 +1720,15 @@ fun AddPaymentDialog(tenants: List<TenantEntity>, onDismiss: () -> Unit, onAdd: 
             }
         },
         confirmButton = {
-            Button(onClick = {
-                val parsedAmount = amount.toDoubleOrNull()
-                if (selectedTenant.isNotBlank() && parsedAmount != null && parsedAmount > 0) {
-                    onAdd(selectedTenant, parsedAmount, mode.trim().ifBlank { "UPI" }, rentMonth.trim(), paymentDate.trim(), note.trim())
-                }
-            }) { Text("Save Payment") }
+            Button(
+                onClick = {
+                    val parsedAmount = amount.toDoubleOrNull()
+                    if (selectedTenant.isNotBlank() && parsedAmount != null && parsedAmount > 0) {
+                        onAdd(selectedTenant, parsedAmount, mode.trim().ifBlank { "UPI" }, rentMonth.trim(), paymentDate.trim(), note.trim())
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
+            ) { Text("Save Payment", color = Color.White) }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
     )
