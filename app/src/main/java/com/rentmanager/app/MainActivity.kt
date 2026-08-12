@@ -303,7 +303,7 @@ fun RentManagerExportApp() {
                                 }
                             }
                             Text(
-                                "Dev: Sparash Ram Sharma",
+                                "Tript Digitals | Dev: Sparash Ram Sharma",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFFE65100)
@@ -579,7 +579,7 @@ fun RentManagerExportApp() {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "App Version: 1.3.3.3 | Dev: Sparash Ram Sharma",
+                            "App Version: 1.3.3.3 | Tript Digitals\nDev: Sparash Ram Sharma",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFE65100)
@@ -719,7 +719,7 @@ fun DashboardScreen(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                "Developed by Sparash Ram Sharma",
+                "Developed by Sparash Ram Sharma | Tript Digitals",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 color = Color(0xFF8D6E63)
@@ -1133,7 +1133,8 @@ fun buildRentReminderMessage(tenant: TenantEntity, balance: Double): String {
         append("• Due Date: ${ordinalDay(tenant.dueDayOfMonth)} of every month\n\n")
         append("Please make the payment at the earliest.\n\n")
         append("Thank you.\n")
-        append("Rent Manager - Dev: Sparash Ram Sharma")
+        append("Rent Manager - Tript Digitals\n")
+        append("Dev: Sparash Ram Sharma")
     }
 }
 
@@ -1150,6 +1151,7 @@ suspend fun exportBackupJson(context: Context, dao: AppDao) {
         val rootObj = JSONObject()
         rootObj.put("backupVersion", 3)
         rootObj.put("appVersion", "1.3.3.3")
+        rootObj.put("company", "Tript Digitals")
         rootObj.put("developer", "Sparash Ram Sharma")
         rootObj.put("backupDate", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
 
