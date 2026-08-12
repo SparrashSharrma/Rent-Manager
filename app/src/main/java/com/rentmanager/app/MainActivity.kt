@@ -221,7 +221,6 @@ fun RentManagerExportApp() {
             TopAppBar(
                 title = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        // BRAND LOGO BADGE
                         Surface(
                             shape = RoundedCornerShape(10.dp),
                             color = Color(0xFFE65100),
@@ -375,7 +374,7 @@ fun RentManagerExportApp() {
             onUpdate = { updatedProp ->
                 coroutineScope.launch { dao.updateProperty(updatedProp) }
                 propertyToEdit = null
-                Toast.makeText(context, "Shop Updated!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Shop Details Updated!", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -503,7 +502,7 @@ fun MetricCard(title: String, value: String, color: Color, modifier: Modifier = 
 }
 
 // ==========================================
-// 6. TABS WITH MONTHLY STATUS BADGES
+// 6. SHOPS & TENANTS TABS WITH EXPLICIT EDIT BUTTONS
 // ==========================================
 
 @Composable
@@ -539,9 +538,11 @@ fun PropertyTab(properties: List<PropertyEntity>, onEdit: (PropertyEntity) -> Un
                                 Text("Type: ${prop.type} | Rent: ₹${prop.rentAmount.toInt()}", fontSize = 13.sp, color = Color.Gray)
                                 Text(if (prop.isOccupied) "Status: Occupied" else "Status: Vacant", fontSize = 12.sp, color = if (prop.isOccupied) Color(0xFF2E7D32) else Color(0xFFD32F2F))
                             }
-                            Row {
-                                IconButton(onClick = { onEdit(prop) }) {
-                                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                OutlinedButton(onClick = { onEdit(prop) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Edit", fontSize = 11.sp)
                                 }
                                 IconButton(onClick = { onDelete(prop) }) {
                                     Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
@@ -607,9 +608,11 @@ fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onEdit
                                         Text(statusLabel, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = statusColor)
                                     }
                                 }
-                                Row {
-                                    IconButton(onClick = { onEdit(tenant) }) {
-                                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    OutlinedButton(onClick = { onEdit(tenant) }, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit", modifier = Modifier.size(14.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("Edit", fontSize = 11.sp)
                                     }
                                     IconButton(onClick = { onDelete(tenant) }) {
                                         Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
