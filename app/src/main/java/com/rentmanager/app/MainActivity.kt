@@ -58,7 +58,7 @@ data class TenantEntity(
     val phone: String,
     val propertyName: String,
     val monthlyRent: Double,
-    val previousDues: Double = 0.0, // PENDING RENT FOR PREVIOUS MONTHS
+    val previousDues: Double = 0.0,
     val securityDeposit: Double,
     val dueDayOfMonth: Int,
     val agreementStart: String,
@@ -76,7 +76,7 @@ data class PaymentEntity(
 )
 
 // ==========================================
-// 2. ROOM DAO
+// 2. ROOM DAO (WITH EDIT / UPDATE SUPPORT)
 // ==========================================
 
 @Dao
@@ -87,6 +87,9 @@ interface AppDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertProperty(property: PropertyEntity)
 
+    @Update
+    suspend fun updateProperty(property: PropertyEntity)
+
     @Delete
     suspend fun deleteProperty(property: PropertyEntity)
 
@@ -95,6 +98,9 @@ interface AppDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertTenant(tenant: TenantEntity)
+
+    @Update
+    suspend fun updateTenant(tenant: TenantEntity)
 
     @Delete
     suspend fun deleteTenant(tenant: TenantEntity)
@@ -123,7 +129,7 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "rent_manager_v2_db"
+                    "rent_manager_v3_db"
                 )
                 .fallbackToDestructiveMigration()
                 .build()
@@ -179,6 +185,9 @@ fun RentManagerExportApp() {
     var showAddPropertyDialog by remember { mutableStateOf(false) }
     var showAddTenantDialog by remember { mutableStateOf(false) }
     var showAddPaymentDialog by remember { mutableStateOf(false) }
+
+    var propertyToEdit by remember { mutableStateOf<PropertyEntity?>(null) }
+    var tenantToEdit by remember { mutableStateOf<TenantEntity?>(null) }
 
     Scaffold(
         topBar = {
@@ -240,25 +249,35 @@ fun RentManagerExportApp() {
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             when (selectedTab) {
                 0 -> DashboardScreen(properties, tenants, payments)
-                1 -> PropertyTab(properties) { prop ->
-                    coroutineScope.launch { dao.deleteProperty(prop) }
-                    Toast.makeText(context, "Property Deleted", Toast.LENGTH_SHORT).show()
-                }
-                2 -> TenantTab(tenants, payments) { tenant ->
-                    coroutineScope.launch {
-                        dao.deleteTenant(tenant)
-                        val prop = properties.find { it.name == tenant.propertyName }
-                        if (prop != null) {
-                            dao.insertProperty(prop.copy(isOccupied = false))
-                        }
+                1 -> PropertyTab(
+                    properties = properties,
+                    onEdit = { prop -> propertyToEdit = prop },
+                    onDelete = { prop ->
+                        coroutineScope.launch { dao.deleteProperty(prop) }
+                        Toast.makeText(context, "Property Deleted", Toast.LENGTH_SHORT).show()
                     }
-                    Toast.makeText(context, "Tenant Removed & Shop Vacated", Toast.LENGTH_SHORT).show()
-                }
+                )
+                2 -> TenantTab(
+                    tenants = tenants,
+                    payments = payments,
+                    onEdit = { tenant -> tenantToEdit = tenant },
+                    onDelete = { tenant ->
+                        coroutineScope.launch {
+                            dao.deleteTenant(tenant)
+                            val prop = properties.find { it.name == tenant.propertyName }
+                            if (prop != null) {
+                                dao.insertProperty(prop.copy(isOccupied = false))
+                            }
+                        }
+                        Toast.makeText(context, "Tenant Removed & Shop Vacated", Toast.LENGTH_SHORT).show()
+                    }
+                )
                 3 -> PaymentTab(payments)
             }
         }
     }
 
+    // Add Dialogs
     if (showAddPropertyDialog) {
         AddPropertyDialog(
             onDismiss = { showAddPropertyDialog = false },
@@ -294,6 +313,32 @@ fun RentManagerExportApp() {
                 val dateStr = SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())
                 coroutineScope.launch { dao.insertPayment(PaymentEntity(tenantName = tenantName, amount = amount, date = dateStr, mode = mode)) }
                 showAddPaymentDialog = false
+            }
+        )
+    }
+
+    // Edit Dialogs
+    propertyToEdit?.let { prop ->
+        EditPropertyDialog(
+            property = prop,
+            onDismiss = { propertyToEdit = null },
+            onUpdate = { updatedProp ->
+                coroutineScope.launch { dao.updateProperty(updatedProp) }
+                propertyToEdit = null
+                Toast.makeText(context, "Shop Updated!", Toast.LENGTH_SHORT).show()
+            }
+        )
+    }
+
+    tenantToEdit?.let { tenant ->
+        EditTenantDialog(
+            tenant = tenant,
+            allProperties = properties,
+            onDismiss = { tenantToEdit = null },
+            onUpdate = { updatedTenant ->
+                coroutineScope.launch { dao.updateTenant(updatedTenant) }
+                tenantToEdit = null
+                Toast.makeText(context, "Tenant Details Updated!", Toast.LENGTH_SHORT).show()
             }
         )
     }
@@ -355,11 +400,11 @@ fun MetricCard(title: String, value: String, color: Color, modifier: Modifier = 
 }
 
 // ==========================================
-// 6. TABS WITH SEARCH & TENANT EXPORTS & REMINDERS
+// 6. TABS WITH SEARCH & EDIT ACTIONS
 // ==========================================
 
 @Composable
-fun PropertyTab(properties: List<PropertyEntity>, onDelete: (PropertyEntity) -> Unit) {
+fun PropertyTab(properties: List<PropertyEntity>, onEdit: (PropertyEntity) -> Unit, onDelete: (PropertyEntity) -> Unit) {
     var searchQuery by remember { mutableStateOf("") }
     val filteredProperties = properties.filter { it.name.contains(searchQuery, ignoreCase = true) }
 
@@ -391,8 +436,13 @@ fun PropertyTab(properties: List<PropertyEntity>, onDelete: (PropertyEntity) -> 
                                 Text("Type: ${prop.type} | Rent: ₹${prop.rentAmount.toInt()}", fontSize = 13.sp, color = Color.Gray)
                                 Text(if (prop.isOccupied) "Status: Occupied" else "Status: Vacant", fontSize = 12.sp, color = if (prop.isOccupied) Color(0xFF2E7D32) else Color(0xFFD32F2F))
                             }
-                            IconButton(onClick = { onDelete(prop) }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
+                            Row {
+                                IconButton(onClick = { onEdit(prop) }) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                                }
+                                IconButton(onClick = { onDelete(prop) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
+                                }
                             }
                         }
                     }
@@ -403,7 +453,7 @@ fun PropertyTab(properties: List<PropertyEntity>, onDelete: (PropertyEntity) -> 
 }
 
 @Composable
-fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onDelete: (TenantEntity) -> Unit) {
+fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onEdit: (TenantEntity) -> Unit, onDelete: (TenantEntity) -> Unit) {
     val context = LocalContext.current
     var searchQuery by remember { mutableStateOf("") }
     val filteredTenants = tenants.filter { it.name.contains(searchQuery, ignoreCase = true) || it.propertyName.contains(searchQuery, ignoreCase = true) }
@@ -436,10 +486,15 @@ fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onDele
 
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Text(tenant.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                IconButton(onClick = { onDelete(tenant) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
+                                Row {
+                                    IconButton(onClick = { onEdit(tenant) }) {
+                                        Icon(Icons.Default.Edit, contentDescription = "Edit", tint = MaterialTheme.colorScheme.primary)
+                                    }
+                                    IconButton(onClick = { onDelete(tenant) }) {
+                                        Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
+                                    }
                                 }
                             }
                             Text("Phone: ${tenant.phone} | Shop: ${tenant.propertyName}", fontSize = 13.sp)
@@ -450,7 +505,6 @@ fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onDele
 
                             Spacer(modifier = Modifier.height(10.dp))
                             
-                            // Reminder Message Generation including Previous Dues
                             val msg = StringBuilder().apply {
                                 append("Hello ${tenant.name},\n")
                                 append("Rent reminder for ${tenant.propertyName}:\n")
@@ -462,7 +516,6 @@ fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onDele
                                 append("Due Day: ${tenant.dueDayOfMonth}th of month. Please make the payment soon. Thank you!")
                             }.toString()
 
-                            // Action Buttons: Send Message (WhatsApp / SMS / Copy)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = { sendWhatsApp(context, tenant.phone, msg) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))) {
                                     Icon(Icons.Default.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
@@ -481,7 +534,6 @@ fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onDele
                             Divider(color = Color.LightGray, thickness = 0.8.dp)
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            // EXPORT PDF AND EXCEL BUTTONS
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(
                                     onClick = { exportTenantPDF(context, tenant, tenantPayments) },
@@ -732,7 +784,7 @@ fun exportAllPaymentsCSV(context: Context, payments: List<PaymentEntity>) {
 }
 
 // ==========================================
-// 8. DIALOGS
+// 8. ADD & EDIT DIALOGS
 // ==========================================
 
 @Composable
@@ -752,6 +804,33 @@ fun AddPropertyDialog(onDismiss: () -> Unit, onAdd: (String, String, Double) -> 
             }
         },
         confirmButton = { Button(onClick = { if (name.isNotBlank()) onAdd(name, type, rent.toDoubleOrNull() ?: 0.0) }) { Text("Save") } },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+fun EditPropertyDialog(property: PropertyEntity, onDismiss: () -> Unit, onUpdate: (PropertyEntity) -> Unit) {
+    var name by remember { mutableStateOf(property.name) }
+    var type by remember { mutableStateOf(property.type) }
+    var rent by remember { mutableStateOf(property.rentAmount.toInt().toString()) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Shop Details") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Shop Name") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = type, onValueChange = { type = it }, label = { Text("Type (Shop/Flat)") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = rent, onValueChange = { rent = it }, label = { Text("Monthly Rent (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                if (name.isNotBlank()) {
+                    onUpdate(property.copy(name = name, type = type, rentAmount = rent.toDoubleOrNull() ?: property.rentAmount))
+                }
+            }) { Text("Update") }
+        },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
     )
 }
@@ -819,6 +898,60 @@ fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Uni
                     onAdd(name, phone, selectedShop, rent.toDoubleOrNull() ?: 0.0, prevDues.toDoubleOrNull() ?: 0.0, deposit.toDoubleOrNull() ?: 0.0, dueDay.toIntOrNull() ?: 5, start, end, idProof)
                 }
             }) { Text("Save Tenant") }
+        },
+        dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
+    )
+}
+
+@Composable
+fun EditTenantDialog(tenant: TenantEntity, allProperties: List<PropertyEntity>, onDismiss: () -> Unit, onUpdate: (TenantEntity) -> Unit) {
+    var name by remember { mutableStateOf(tenant.name) }
+    var phone by remember { mutableStateOf(tenant.phone) }
+    var shopName by remember { mutableStateOf(tenant.propertyName) }
+    var rent by remember { mutableStateOf(tenant.monthlyRent.toInt().toString()) }
+    var prevDues by remember { mutableStateOf(tenant.previousDues.toInt().toString()) }
+    var deposit by remember { mutableStateOf(tenant.securityDeposit.toInt().toString()) }
+    var dueDay by remember { mutableStateOf(tenant.dueDayOfMonth.toString()) }
+    var start by remember { mutableStateOf(tenant.agreementStart) }
+    var end by remember { mutableStateOf(tenant.agreementEnd) }
+    var idProof by remember { mutableStateOf(tenant.idProofNote) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Edit Tenant Details") },
+        text = {
+            LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = shopName, onValueChange = { shopName = it }, label = { Text("Assigned Shop") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = rent, onValueChange = { rent = it }, label = { Text("Current Monthly Rent (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = prevDues, onValueChange = { prevDues = it }, label = { Text("Previous Months Pending Rent (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = deposit, onValueChange = { deposit = it }, label = { Text("Security Deposit (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = dueDay, onValueChange = { dueDay = it }, label = { Text("Rent Due Day (1-31)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = start, onValueChange = { start = it }, label = { Text("Agreement Start Date") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = end, onValueChange = { end = it }, label = { Text("Agreement End Date") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = idProof, onValueChange = { idProof = it }, label = { Text("ID Proof Note") }, modifier = Modifier.fillMaxWidth()) }
+            }
+        },
+        confirmButton = {
+            Button(onClick = {
+                if (name.isNotBlank()) {
+                    onUpdate(
+                        tenant.copy(
+                            name = name,
+                            phone = phone,
+                            propertyName = shopName,
+                            monthlyRent = rent.toDoubleOrNull() ?: tenant.monthlyRent,
+                            previousDues = prevDues.toDoubleOrNull() ?: tenant.previousDues,
+                            securityDeposit = deposit.toDoubleOrNull() ?: tenant.securityDeposit,
+                            dueDayOfMonth = dueDay.toIntOrNull() ?: tenant.dueDayOfMonth,
+                            agreementStart = start,
+                            agreementEnd = end,
+                            idProofNote = idProof
+                        )
+                    )
+                }
+            }) { Text("Update Tenant") }
         },
         dismissButton = { OutlinedButton(onClick = onDismiss) { Text("Cancel") } }
     )
