@@ -4,6 +4,8 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
@@ -14,12 +16,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.launch
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -29,12 +35,17 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.core.content.FileProvider
 import androidx.room.*
 import kotlinx.coroutines.flow.Flow
@@ -73,7 +84,9 @@ data class TenantEntity(
     val dueDayOfMonth: Int,
     val agreementStart: String,
     val agreementEnd: String,
-    val idProofNote: String
+    val idProofNote: String,
+    val tenantPhotoUri: String = "",
+    val idProofPhotoUris: String = "" // Comma-separated URIs (Max 3)
 )
 
 @Entity(tableName = "payments")
@@ -160,7 +173,7 @@ interface AppDao {
         TenantEntity::class,
         PaymentEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -200,7 +213,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            // SAFFRON + GOLDEN + YELLOW + RED THEME
             val saffronPrimary = Color(0xFFE65100)
             val saffronContainer = Color(0xFFFFE0B2)
             val goldenSecondary = Color(0xFFFFB300)
@@ -247,6 +259,7 @@ fun RentManagerExportApp() {
 
     var propertyToEdit by remember { mutableStateOf<PropertyEntity?>(null) }
     var tenantToEdit by remember { mutableStateOf<TenantEntity?>(null) }
+    var fullScreenPhotoUri by remember { mutableStateOf<String?>(null) }
 
     val restoreFileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -294,7 +307,7 @@ fun RentManagerExportApp() {
                                     shape = RoundedCornerShape(4.dp)
                                 ) {
                                     Text(
-                                        "v1.3.3.3",
+                                        "v1.3.6",
                                         color = Color.White,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
@@ -409,6 +422,7 @@ fun RentManagerExportApp() {
                     tenants = tenants,
                     payments = payments,
                     onEdit = { tenantToEdit = it },
+                    onImageClick = { fullScreenPhotoUri = it },
                     onDelete = { tenant ->
                         coroutineScope.launch {
                             dao.deleteTenant(tenant)
@@ -443,7 +457,7 @@ fun RentManagerExportApp() {
         AddTenantDialog(
             vacantProperties = properties.filter { !it.isOccupied },
             onDismiss = { showAddTenantDialog = false },
-            onAdd = { name, phone, shop, rent, prevDues, deposit, dueDay, start, end, idProof ->
+            onAdd = { name, phone, shop, rent, prevDues, deposit, dueDay, start, end, idProof, photoUri, idPhotoUris ->
                 coroutineScope.launch {
                     dao.insertTenant(
                         TenantEntity(
@@ -456,7 +470,9 @@ fun RentManagerExportApp() {
                             dueDayOfMonth = dueDay.coerceIn(1, 31),
                             agreementStart = start.trim(),
                             agreementEnd = end.trim(),
-                            idProofNote = idProof.trim()
+                            idProofNote = idProof.trim(),
+                            tenantPhotoUri = photoUri,
+                            idProofPhotoUris = idPhotoUris
                         )
                     )
                     val prop = properties.find { it.name.equals(shop, ignoreCase = true) }
@@ -540,13 +556,49 @@ fun RentManagerExportApp() {
         )
     }
 
+    fullScreenPhotoUri?.let { uri ->
+        Dialog(onDismissRequest = { fullScreenPhotoUri = null }) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = Color.Black,
+                modifier = Modifier.fillMaxWidth().padding(16.dp)
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(12.dp)) {
+                    val bitmap = rememberBitmapFromUri(uri)
+                    if (bitmap != null) {
+                        Image(
+                            bitmap = bitmap,
+                            contentDescription = "Full Photo",
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxWidth().height(350.dp)
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.size(200.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Image load error", color = Color.White)
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Button(
+                        onClick = { fullScreenPhotoUri = null },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
+                    ) {
+                        Text("Close", color = Color.White)
+                    }
+                }
+            }
+        }
+    }
+
     if (showBackupDialog) {
         AlertDialog(
             onDismissRequest = { showBackupDialog = false },
             title = { Text("Backup & Restore Data", color = Color(0xFF3E2723), fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Backup your shops, tenants and payment records.")
+                    Text("Backup your shops, tenants, photos and payment records.")
                     Button(
                         onClick = {
                             coroutineScope.launch { exportBackupJson(context, dao) }
@@ -579,7 +631,7 @@ fun RentManagerExportApp() {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "App Version: 1.3.3.3 | Tript Digitals\nDev: Sparash Ram Sharma",
+                            "App Version: 1.3.6 | Tript Digitals\nDev: Sparash Ram Sharma",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFE65100)
@@ -654,7 +706,7 @@ fun DashboardScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFBC02D))
             ) {
                 Text(
-                    "v1.3.3.3",
+                    "v1.3.6",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFE65100),
@@ -841,7 +893,7 @@ fun PropertyTab(
 }
 
 // ============================================================
-// 9. TENANT TAB
+// 9. TENANT TAB (WITH PHOTO & ID PROOF THUMBNAILS)
 // ============================================================
 
 @Composable
@@ -849,6 +901,7 @@ fun TenantTab(
     tenants: List<TenantEntity>,
     payments: List<PaymentEntity>,
     onEdit: (TenantEntity) -> Unit,
+    onImageClick: (String) -> Unit,
     onDelete: (TenantEntity) -> Unit
 ) {
     val context = LocalContext.current
@@ -895,28 +948,54 @@ fun TenantTab(
                         else -> "OVERDUE" to Color(0xFFD32F2F)
                     }
 
+                    val idPhotosList = tenant.idProofPhotoUris.split(",").filter { it.isNotBlank() }
+
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFDE7))
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(tenant.name, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF3E2723))
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Box(
-                                        modifier = Modifier
-                                            .background(status.second.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
-                                            .padding(horizontal = 6.dp, vertical = 2.dp)
-                                    ) {
-                                        Text(status.first, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = status.second)
+                                    if (tenant.tenantPhotoUri.isNotBlank()) {
+                                        val bitmap = rememberBitmapFromUri(tenant.tenantPhotoUri)
+                                        if (bitmap != null) {
+                                            Image(
+                                                bitmap = bitmap,
+                                                contentDescription = "Tenant Photo",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(45.dp)
+                                                    .clip(CircleShape)
+                                                    .border(1.5.dp, Color(0xFFE65100), CircleShape)
+                                                    .clickable { onImageClick(tenant.tenantPhotoUri) }
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                        }
+                                    }
+                                    Column {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(tenant.name, fontWeight = FontWeight.Bold, fontSize = 17.sp, color = Color(0xFF3E2723))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(status.second.copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(status.first, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = status.second)
+                                            }
+                                        }
+                                        Text("Shop: ${tenant.propertyName}", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
                                     }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(4.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text("Phone: ${tenant.phone}", fontSize = 13.sp)
-                            Text("Shop: ${tenant.propertyName}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE65100))
                             Text("Monthly Rent: ₹${tenant.monthlyRent.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
                             Text("Previous Dues: ₹${tenant.previousDues.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
                             Text("Security Deposit: ₹${tenant.securityDeposit.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
@@ -925,7 +1004,30 @@ fun TenantTab(
                             Text("Total Historical Paid: ₹${totalHistoricalPaid.toInt()}", fontSize = 12.sp, color = Color.Gray)
                             Text("Rent Due: ${ordinalDay(tenant.dueDayOfMonth)} of every month", fontSize = 12.sp, color = Color.Gray)
                             Text("Agreement: ${tenant.agreementStart} to ${tenant.agreementEnd}", fontSize = 12.sp, color = Color.Gray)
-                            Text("ID Proof: ${tenant.idProofNote}", fontSize = 12.sp, color = Color.Gray)
+                            Text("ID Proof Note: ${tenant.idProofNote}", fontSize = 12.sp, color = Color.Gray)
+
+                            if (idPhotosList.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("ID Proof Photos (${idPhotosList.size}/3):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                                Spacer(modifier = Modifier.height(4.dp))
+                                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    items(idPhotosList) { photoUri ->
+                                        val bitmap = rememberBitmapFromUri(photoUri)
+                                        if (bitmap != null) {
+                                            Image(
+                                                bitmap = bitmap,
+                                                contentDescription = "ID Photo",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(50.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .border(1.dp, Color(0xFFFFB300), RoundedCornerShape(6.dp))
+                                                    .clickable { onImageClick(photoUri) }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
 
                             Spacer(modifier = Modifier.height(10.dp))
 
@@ -1149,8 +1251,8 @@ suspend fun exportBackupJson(context: Context, dao: AppDao) {
         val payments = dao.getPaymentList()
 
         val rootObj = JSONObject()
-        rootObj.put("backupVersion", 3)
-        rootObj.put("appVersion", "1.3.3.3")
+        rootObj.put("backupVersion", 4)
+        rootObj.put("appVersion", "1.3.6")
         rootObj.put("company", "Tript Digitals")
         rootObj.put("developer", "Sparash Ram Sharma")
         rootObj.put("backupDate", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
@@ -1181,6 +1283,8 @@ suspend fun exportBackupJson(context: Context, dao: AppDao) {
             obj.put("agreementStart", t.agreementStart)
             obj.put("agreementEnd", t.agreementEnd)
             obj.put("idProofNote", t.idProofNote)
+            obj.put("tenantPhotoUri", t.tenantPhotoUri)
+            obj.put("idProofPhotoUris", t.idProofPhotoUris)
             tenantArr.put(obj)
         }
         rootObj.put("tenants", tenantArr)
@@ -1263,7 +1367,9 @@ suspend fun restoreFromBackupJson(context: Context, dao: AppDao, uri: Uri) {
                         dueDayOfMonth = obj.optInt("dueDayOfMonth", 5),
                         agreementStart = obj.optString("agreementStart", ""),
                         agreementEnd = obj.optString("agreementEnd", ""),
-                        idProofNote = obj.optString("idProofNote", "")
+                        idProofNote = obj.optString("idProofNote", ""),
+                        tenantPhotoUri = obj.optString("tenantPhotoUri", ""),
+                        idProofPhotoUris = obj.optString("idProofPhotoUris", "")
                     )
                 )
             }
@@ -1453,7 +1559,7 @@ fun exportAllPaymentsCSV(context: Context, payments: List<PaymentEntity>) {
 }
 
 // ============================================================
-// 14. ADD & EDIT DIALOGS (CUSTOM STABLE DROPDOWN)
+// 14. ADD & EDIT DIALOGS (WITH GALLERY & CAMERA PICKERS)
 // ============================================================
 
 @Composable
@@ -1518,7 +1624,12 @@ fun EditPropertyDialog(property: PropertyEntity, onDismiss: () -> Unit, onUpdate
 }
 
 @Composable
-fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Unit, onAdd: (String, String, String, Double, Double, Double, Int, String, String, String) -> Unit) {
+fun AddTenantDialog(
+    vacantProperties: List<PropertyEntity>,
+    onDismiss: () -> Unit,
+    onAdd: (String, String, String, Double, Double, Double, Int, String, String, String, String, String) -> Unit
+) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var selectedShop by remember { mutableStateOf(vacantProperties.firstOrNull()?.name ?: "") }
@@ -1531,6 +1642,31 @@ fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Uni
     var end by remember { mutableStateOf("31 Dec 2026") }
     var idProof by remember { mutableStateOf("Aadhaar Card") }
 
+    var tenantPhotoUri by remember { mutableStateOf("") }
+    var idProofPhotoList by remember { mutableStateOf<List<String>>(emptyList()) }
+
+    val photoGalleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let { tenantPhotoUri = it.toString() }
+    }
+    val photoCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap: Bitmap? ->
+        bitmap?.let { saveBitmapToCache(context, it)?.let { uri -> tenantPhotoUri = uri.toString() } }
+    }
+
+    val idGalleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
+        val newList = idProofPhotoList.toMutableList()
+        uris.forEach { uri -> if (newList.size < 3) newList.add(uri.toString()) }
+        idProofPhotoList = newList
+    }
+    val idCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap: Bitmap? ->
+        bitmap?.let {
+            saveBitmapToCache(context, it)?.let { uri ->
+                if (idProofPhotoList.size < 3) {
+                    idProofPhotoList = idProofPhotoList + uri.toString()
+                }
+            }
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Add Tenant", color = Color(0xFF3E2723), fontWeight = FontWeight.Bold) },
@@ -1538,6 +1674,40 @@ fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Uni
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
+
+                // TENANT PHOTO UPLOAD SECTION
+                item {
+                    Column {
+                        Text("Tenant Photo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (tenantPhotoUri.isNotBlank()) {
+                                val bitmap = rememberBitmapFromUri(tenantPhotoUri)
+                                if (bitmap != null) {
+                                    Image(
+                                        bitmap = bitmap,
+                                        contentDescription = "Tenant Preview",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(50.dp).clip(CircleShape).border(1.5.dp, Color(0xFFE65100), CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                            }
+                            Button(
+                                onClick = { photoGalleryLauncher.launch("image/*") },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8F00)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Gallery", fontSize = 10.sp, color = Color.White) }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Button(
+                                onClick = { photoCameraLauncher.launch() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Camera", fontSize = 10.sp, color = Color.White) }
+                        }
+                    }
+                }
+
                 item {
                     Box(modifier = Modifier.fillMaxWidth()) {
                         OutlinedTextField(
@@ -1582,6 +1752,57 @@ fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Uni
                 item { OutlinedTextField(value = start, onValueChange = { start = it }, label = { Text("Agreement Start Date") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = end, onValueChange = { end = it }, label = { Text("Agreement End Date") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = idProof, onValueChange = { idProof = it }, label = { Text("ID Proof Note") }, modifier = Modifier.fillMaxWidth()) }
+
+                // ID PROOF PHOTOS SECTION (MAX 3)
+                item {
+                    Column {
+                        Text("ID Proof Photos (Max 3): ${idProofPhotoList.size}/3", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row {
+                            Button(
+                                onClick = { idGalleryLauncher.launch("image/*") },
+                                enabled = idProofPhotoList.size < 3,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8F00)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("+ Gallery", fontSize = 10.sp, color = Color.White) }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Button(
+                                onClick = { idCameraLauncher.launch() },
+                                enabled = idProofPhotoList.size < 3,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("+ Camera", fontSize = 10.sp, color = Color.White) }
+                        }
+                        if (idProofPhotoList.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(idProofPhotoList) { uriStr ->
+                                    val bitmap = rememberBitmapFromUri(uriStr)
+                                    if (bitmap != null) {
+                                        Box {
+                                            Image(
+                                                bitmap = bitmap,
+                                                contentDescription = "ID Thumbnail",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.size(50.dp).clip(RoundedCornerShape(6.dp))
+                                            )
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Remove",
+                                                tint = Color.Red,
+                                                modifier = Modifier
+                                                    .size(18.dp)
+                                                    .background(Color.White, CircleShape)
+                                                    .align(Alignment.TopEnd)
+                                                    .clickable { idProofPhotoList = idProofPhotoList - uriStr }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -1590,7 +1811,12 @@ fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Uni
                     val parsedRent = rent.toDoubleOrNull()
                     val parsedDueDay = dueDay.toIntOrNull()
                     if (name.isNotBlank() && selectedShop.isNotBlank() && parsedRent != null) {
-                        onAdd(name, phone, selectedShop, parsedRent, prevDues.toDoubleOrNull() ?: 0.0, deposit.toDoubleOrNull() ?: 0.0, parsedDueDay?.coerceIn(1, 31) ?: 5, start, end, idProof)
+                        onAdd(
+                            name, phone, selectedShop, parsedRent,
+                            prevDues.toDoubleOrNull() ?: 0.0, deposit.toDoubleOrNull() ?: 0.0,
+                            parsedDueDay?.coerceIn(1, 31) ?: 5, start, end, idProof,
+                            tenantPhotoUri, idProofPhotoList.joinToString(",")
+                        )
                     }
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
@@ -1601,7 +1827,13 @@ fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Uni
 }
 
 @Composable
-fun EditTenantDialog(tenant: TenantEntity, allProperties: List<PropertyEntity>, onDismiss: () -> Unit, onUpdate: (TenantEntity) -> Unit) {
+fun EditTenantDialog(
+    tenant: TenantEntity,
+    allProperties: List<PropertyEntity>,
+    onDismiss: () -> Unit,
+    onUpdate: (TenantEntity) -> Unit
+) {
+    val context = LocalContext.current
     var name by remember { mutableStateOf(tenant.name) }
     var phone by remember { mutableStateOf(tenant.phone) }
     var shopName by remember { mutableStateOf(tenant.propertyName) }
@@ -1613,6 +1845,31 @@ fun EditTenantDialog(tenant: TenantEntity, allProperties: List<PropertyEntity>, 
     var end by remember { mutableStateOf(tenant.agreementEnd) }
     var idProof by remember { mutableStateOf(tenant.idProofNote) }
 
+    var tenantPhotoUri by remember { mutableStateOf(tenant.tenantPhotoUri) }
+    var idProofPhotoList by remember { mutableStateOf(tenant.idProofPhotoUris.split(",").filter { it.isNotBlank() }) }
+
+    val photoGalleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        uri?.let { tenantPhotoUri = it.toString() }
+    }
+    val photoCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap: Bitmap? ->
+        bitmap?.let { saveBitmapToCache(context, it)?.let { uri -> tenantPhotoUri = uri.toString() } }
+    }
+
+    val idGalleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
+        val newList = idProofPhotoList.toMutableList()
+        uris.forEach { uri -> if (newList.size < 3) newList.add(uri.toString()) }
+        idProofPhotoList = newList
+    }
+    val idCameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicturePreview()) { bitmap: Bitmap? ->
+        bitmap?.let {
+            saveBitmapToCache(context, it)?.let { uri ->
+                if (idProofPhotoList.size < 3) {
+                    idProofPhotoList = idProofPhotoList + uri.toString()
+                }
+            }
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Edit Tenant Details", color = Color(0xFF3E2723), fontWeight = FontWeight.Bold) },
@@ -1620,6 +1877,40 @@ fun EditTenantDialog(tenant: TenantEntity, allProperties: List<PropertyEntity>, 
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
+
+                // TENANT PHOTO UPLOAD SECTION
+                item {
+                    Column {
+                        Text("Tenant Photo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (tenantPhotoUri.isNotBlank()) {
+                                val bitmap = rememberBitmapFromUri(tenantPhotoUri)
+                                if (bitmap != null) {
+                                    Image(
+                                        bitmap = bitmap,
+                                        contentDescription = "Tenant Preview",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.size(50.dp).clip(CircleShape).border(1.5.dp, Color(0xFFE65100), CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                }
+                            }
+                            Button(
+                                onClick = { photoGalleryLauncher.launch("image/*") },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8F00)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Gallery", fontSize = 10.sp, color = Color.White) }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Button(
+                                onClick = { photoCameraLauncher.launch() },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("Camera", fontSize = 10.sp, color = Color.White) }
+                        }
+                    }
+                }
+
                 item { OutlinedTextField(value = shopName, onValueChange = { shopName = it }, label = { Text("Assigned Shop") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = rent, onValueChange = { rent = it }, label = { Text("Current Monthly Rent (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = prevDues, onValueChange = { prevDues = it }, label = { Text("Previous Pending Rent (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
@@ -1628,6 +1919,57 @@ fun EditTenantDialog(tenant: TenantEntity, allProperties: List<PropertyEntity>, 
                 item { OutlinedTextField(value = start, onValueChange = { start = it }, label = { Text("Agreement Start Date") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = end, onValueChange = { end = it }, label = { Text("Agreement End Date") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = idProof, onValueChange = { idProof = it }, label = { Text("ID Proof Note") }, modifier = Modifier.fillMaxWidth()) }
+
+                // ID PROOF PHOTOS SECTION (MAX 3)
+                item {
+                    Column {
+                        Text("ID Proof Photos (Max 3): ${idProofPhotoList.size}/3", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Row {
+                            Button(
+                                onClick = { idGalleryLauncher.launch("image/*") },
+                                enabled = idProofPhotoList.size < 3,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8F00)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("+ Gallery", fontSize = 10.sp, color = Color.White) }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Button(
+                                onClick = { idCameraLauncher.launch() },
+                                enabled = idProofPhotoList.size < 3,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                                modifier = Modifier.weight(1f)
+                            ) { Text("+ Camera", fontSize = 10.sp, color = Color.White) }
+                        }
+                        if (idProofPhotoList.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                items(idProofPhotoList) { uriStr ->
+                                    val bitmap = rememberBitmapFromUri(uriStr)
+                                    if (bitmap != null) {
+                                        Box {
+                                            Image(
+                                                bitmap = bitmap,
+                                                contentDescription = "ID Thumbnail",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.size(50.dp).clip(RoundedCornerShape(6.dp))
+                                            )
+                                            Icon(
+                                                Icons.Default.Close,
+                                                contentDescription = "Remove",
+                                                tint = Color.Red,
+                                                modifier = Modifier
+                                                    .size(18.dp)
+                                                    .background(Color.White, CircleShape)
+                                                    .align(Alignment.TopEnd)
+                                                    .clickable { idProofPhotoList = idProofPhotoList - uriStr }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -1645,7 +1987,9 @@ fun EditTenantDialog(tenant: TenantEntity, allProperties: List<PropertyEntity>, 
                                 dueDayOfMonth = (dueDay.toIntOrNull() ?: tenant.dueDayOfMonth).coerceIn(1, 31),
                                 agreementStart = start.trim(),
                                 agreementEnd = end.trim(),
-                                idProofNote = idProof.trim()
+                                idProofNote = idProof.trim(),
+                                tenantPhotoUri = tenantPhotoUri,
+                                idProofPhotoUris = idProofPhotoList.joinToString(",")
                             )
                         )
                     }
@@ -1737,8 +2081,43 @@ fun AddPaymentDialog(tenants: List<TenantEntity>, onDismiss: () -> Unit, onAdd: 
 }
 
 // ============================================================
-// 15. HELPER UTILS
+// 15. HELPER UTILS & IMAGE LOADERS
 // ============================================================
+
+@Composable
+fun rememberBitmapFromUri(uriString: String): ImageBitmap? {
+    val context = LocalContext.current
+    var imageBitmap by remember(uriString) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(uriString) {
+        if (uriString.isNotBlank()) {
+            try {
+                val uri = Uri.parse(uriString)
+                val inputStream = context.contentResolver.openInputStream(uri)
+                val bitmap = BitmapFactory.decodeStream(inputStream)
+                inputStream?.close()
+                imageBitmap = bitmap?.asImageBitmap()
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        } else {
+            imageBitmap = null
+        }
+    }
+    return imageBitmap
+}
+
+fun saveBitmapToCache(context: Context, bitmap: Bitmap): Uri? {
+    return try {
+        val file = File(context.cacheDir, "img_${System.currentTimeMillis()}.jpg")
+        file.outputStream().use { out ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+        }
+        FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        null
+    }
+}
 
 fun ordinalDay(day: Int): String {
     val safeDay = day.coerceIn(1, 31)
