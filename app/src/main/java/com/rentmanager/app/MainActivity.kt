@@ -58,6 +58,7 @@ data class TenantEntity(
     val phone: String,
     val propertyName: String,
     val monthlyRent: Double,
+    val previousDues: Double = 0.0, // PENDING RENT FOR PREVIOUS MONTHS
     val securityDeposit: Double,
     val dueDayOfMonth: Int,
     val agreementStart: String,
@@ -109,7 +110,7 @@ interface AppDao {
 // 3. ROOM DATABASE CLASS
 // ==========================================
 
-@Database(entities = [PropertyEntity::class, TenantEntity::class, PaymentEntity::class], version = 1, exportSchema = false)
+@Database(entities = [PropertyEntity::class, TenantEntity::class, PaymentEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun appDao(): AppDao
 
@@ -122,8 +123,10 @@ abstract class AppDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "rent_manager_saffron_db"
-                ).build()
+                    "rent_manager_v2_db"
+                )
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }
@@ -139,12 +142,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            // Saffron Golden Theme Color Palette
-            val SaffronPrimary = Color(0xFFE65100)      // Deep Saffron
-            val SaffronContainer = Color(0xFFFFE0B2)    // Warm Light Saffron
-            val GoldenSecondary = Color(0xFFFF8F00)     // Warm Gold / Amber
-            val GoldenContainer = Color(0xFFFFF8E1)     // Smooth Golden Cream
-            val BackgroundSurface = Color(0xFFFFFDF9)   // Warm Surface Background
+            val SaffronPrimary = Color(0xFFE65100)
+            val SaffronContainer = Color(0xFFFFE0B2)
+            val GoldenSecondary = Color(0xFFFF8F00)
+            val GoldenContainer = Color(0xFFFFF8E1)
+            val BackgroundSurface = Color(0xFFFFFDF9)
 
             MaterialTheme(
                 colorScheme = lightColorScheme(
@@ -271,9 +273,9 @@ fun RentManagerExportApp() {
         AddTenantDialog(
             vacantProperties = properties.filter { !it.isOccupied },
             onDismiss = { showAddTenantDialog = false },
-            onAdd = { name, phone, shop, rent, deposit, dueDay, start, end, idProof ->
+            onAdd = { name, phone, shop, rent, prevDues, deposit, dueDay, start, end, idProof ->
                 coroutineScope.launch {
-                    dao.insertTenant(TenantEntity(name = name, phone = phone, propertyName = shop, monthlyRent = rent, securityDeposit = deposit, dueDayOfMonth = dueDay, agreementStart = start, agreementEnd = end, idProofNote = idProof))
+                    dao.insertTenant(TenantEntity(name = name, phone = phone, propertyName = shop, monthlyRent = rent, previousDues = prevDues, securityDeposit = deposit, dueDayOfMonth = dueDay, agreementStart = start, agreementEnd = end, idProofNote = idProof))
                     val prop = properties.find { it.name == shop }
                     if (prop != null) {
                         dao.insertProperty(prop.copy(isOccupied = true))
@@ -303,7 +305,9 @@ fun RentManagerExportApp() {
 
 @Composable
 fun DashboardScreen(properties: List<PropertyEntity>, tenants: List<TenantEntity>, payments: List<PaymentEntity>) {
-    val totalExpected = tenants.sumOf { it.monthlyRent }
+    val totalCurrentRent = tenants.sumOf { it.monthlyRent }
+    val totalPreviousDues = tenants.sumOf { it.previousDues }
+    val totalExpected = totalCurrentRent + totalPreviousDues
     val totalReceived = payments.sumOf { it.amount }
     val pendingAmount = (totalExpected - totalReceived).coerceAtLeast(0.0)
     val vacantShops = properties.count { !it.isOccupied }
@@ -314,12 +318,12 @@ fun DashboardScreen(properties: List<PropertyEntity>, tenants: List<TenantEntity
         Spacer(modifier = Modifier.height(12.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard("Expected Monthly", "₹${totalExpected.toInt()}", Color(0xFFE65100), Modifier.weight(1f))
-            MetricCard("Rent Collected", "₹${totalReceived.toInt()}", Color(0xFF2E7D32), Modifier.weight(1f))
+            MetricCard("Total Expected (Incl. Prev)", "₹${totalExpected.toInt()}", Color(0xFFE65100), Modifier.weight(1f))
+            MetricCard("Total Received", "₹${totalReceived.toInt()}", Color(0xFF2E7D32), Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(8.dp))
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard("Pending Dues", "₹${pendingAmount.toInt()}", Color(0xFFC62828), Modifier.weight(1f))
+            MetricCard("Total Pending Dues", "₹${pendingAmount.toInt()}", Color(0xFFC62828), Modifier.weight(1f))
             MetricCard("Vacant Shops", "$vacantShops", Color(0xFFFF8F00), Modifier.weight(1f))
         }
 
@@ -351,7 +355,7 @@ fun MetricCard(title: String, value: String, color: Color, modifier: Modifier = 
 }
 
 // ==========================================
-// 6. TABS WITH SEARCH & TENANT EXPORTS
+// 6. TABS WITH SEARCH & TENANT EXPORTS & REMINDERS
 // ==========================================
 
 @Composable
@@ -427,7 +431,8 @@ fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onDele
                 items(filteredTenants) { tenant ->
                     val tenantPayments = payments.filter { it.tenantName.equals(tenant.name, ignoreCase = true) }
                     val totalPaid = tenantPayments.sumOf { it.amount }
-                    val balance = (tenant.monthlyRent - totalPaid).coerceAtLeast(0.0)
+                    val totalDue = tenant.monthlyRent + tenant.previousDues
+                    val balance = (totalDue - totalPaid).coerceAtLeast(0.0)
 
                     Card(modifier = Modifier.fillMaxWidth()) {
                         Column(modifier = Modifier.padding(16.dp)) {
@@ -438,17 +443,30 @@ fun TenantTab(tenants: List<TenantEntity>, payments: List<PaymentEntity>, onDele
                                 }
                             }
                             Text("Phone: ${tenant.phone} | Shop: ${tenant.propertyName}", fontSize = 13.sp)
-                            Text("Rent: ₹${tenant.monthlyRent.toInt()} | Deposit: ₹${tenant.securityDeposit.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
-                            Text("Paid: ₹${totalPaid.toInt()} | Pending Balance: ₹${balance.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (balance > 0) Color(0xFFC62828) else Color(0xFF2E7D32))
+                            Text("Monthly Rent: ₹${tenant.monthlyRent.toInt()} | Prev Dues: ₹${tenant.previousDues.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
+                            Text("Security Deposit: ₹${tenant.securityDeposit.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
+                            Text("Paid: ₹${totalPaid.toInt()} | Total Pending: ₹${balance.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (balance > 0) Color(0xFFC62828) else Color(0xFF2E7D32))
                             Text("Due Day: ${tenant.dueDayOfMonth}th | Agreement: ${tenant.agreementStart} to ${tenant.agreementEnd}", fontSize = 12.sp, color = Color.Gray)
 
                             Spacer(modifier = Modifier.height(10.dp))
                             
-                            // Reminder Action Buttons
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                val msg = "Hello ${tenant.name}, rent reminder of ₹${tenant.monthlyRent.toInt()} for ${tenant.propertyName} (Pending: ₹${balance.toInt()}) due on ${tenant.dueDayOfMonth}th. Please pay soon. Thank you!"
+                            // Reminder Message Generation including Previous Dues
+                            val msg = StringBuilder().apply {
+                                append("Hello ${tenant.name},\n")
+                                append("Rent reminder for ${tenant.propertyName}:\n")
+                                append("• Monthly Rent: ₹${tenant.monthlyRent.toInt()}\n")
+                                if (tenant.previousDues > 0) {
+                                    append("• Previous Pending Rent: ₹${tenant.previousDues.toInt()}\n")
+                                }
+                                append("• Total Amount Due: ₹${balance.toInt()}\n")
+                                append("Due Day: ${tenant.dueDayOfMonth}th of month. Please make the payment soon. Thank you!")
+                            }.toString()
 
+                            // Action Buttons: Send Message (WhatsApp / SMS / Copy)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = { sendWhatsApp(context, tenant.phone, msg) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF25D366))) {
+                                    Icon(Icons.Default.Send, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
                                     Text("WhatsApp", fontSize = 10.sp, color = Color.White)
                                 }
                                 Button(onClick = { sendSMS(context, tenant.phone, msg) }) {
@@ -567,7 +585,6 @@ fun copyToClipboard(context: Context, text: String) {
     Toast.makeText(context, "Reminder text copied!", Toast.LENGTH_SHORT).show()
 }
 
-// GENERATE NATIVE PDF STATEMENT FOR A TENANT
 fun exportTenantPDF(context: Context, tenant: TenantEntity, tenantPayments: List<PaymentEntity>) {
     try {
         val pdfDocument = PdfDocument()
@@ -594,6 +611,8 @@ fun exportTenantPDF(context: Context, tenant: TenantEntity, tenantPayments: List
         y += 20f
         canvas.drawText("Monthly Rent: RS ${tenant.monthlyRent.toInt()}", 40f, y, paint)
         y += 20f
+        canvas.drawText("Previous Months Pending Dues: RS ${tenant.previousDues.toInt()}", 40f, y, paint)
+        y += 20f
         canvas.drawText("Security Deposit: RS ${tenant.securityDeposit.toInt()}", 40f, y, paint)
         y += 20f
         canvas.drawText("Rent Due Day: ${tenant.dueDayOfMonth}th of every month", 40f, y, paint)
@@ -602,10 +621,11 @@ fun exportTenantPDF(context: Context, tenant: TenantEntity, tenantPayments: List
 
         y += 30f
         val totalPaid = tenantPayments.sumOf { it.amount }
-        val balance = (tenant.monthlyRent - totalPaid).coerceAtLeast(0.0)
+        val totalDue = tenant.monthlyRent + tenant.previousDues
+        val balance = (totalDue - totalPaid).coerceAtLeast(0.0)
 
         paint.isFakeBoldText = true
-        canvas.drawText("Total Paid: RS ${totalPaid.toInt()}  |  Pending Balance: RS ${balance.toInt()}", 40f, y, paint)
+        canvas.drawText("Total Paid: RS ${totalPaid.toInt()}  |  Total Pending Balance: RS ${balance.toInt()}", 40f, y, paint)
 
         y += 20f
         paint.color = android.graphics.Color.GRAY
@@ -650,11 +670,11 @@ fun exportTenantPDF(context: Context, tenant: TenantEntity, tenantPayments: List
     }
 }
 
-// GENERATE EXCEL (CSV) STATEMENT FOR A TENANT
 fun exportTenantCSV(context: Context, tenant: TenantEntity, tenantPayments: List<PaymentEntity>) {
     try {
         val totalPaid = tenantPayments.sumOf { it.amount }
-        val balance = (tenant.monthlyRent - totalPaid).coerceAtLeast(0.0)
+        val totalDue = tenant.monthlyRent + tenant.previousDues
+        val balance = (totalDue - totalPaid).coerceAtLeast(0.0)
 
         val builder = StringBuilder()
         builder.append("TENANT STATEMENT\n")
@@ -662,10 +682,11 @@ fun exportTenantCSV(context: Context, tenant: TenantEntity, tenantPayments: List
         builder.append("Phone,${tenant.phone}\n")
         builder.append("Shop/Property,${tenant.propertyName}\n")
         builder.append("Monthly Rent,${tenant.monthlyRent}\n")
+        builder.append("Previous Months Pending Rent,${tenant.previousDues}\n")
         builder.append("Security Deposit,${tenant.securityDeposit}\n")
         builder.append("Agreement Period,${tenant.agreementStart} to ${tenant.agreementEnd}\n")
         builder.append("Total Rent Paid,$totalPaid\n")
-        builder.append("Pending Balance,$balance\n\n")
+        builder.append("Total Pending Balance,$balance\n\n")
 
         builder.append("PAYMENT HISTORY\n")
         builder.append("Date,Amount Paid (RS),Payment Mode\n")
@@ -737,12 +758,13 @@ fun AddPropertyDialog(onDismiss: () -> Unit, onAdd: (String, String, Double) -> 
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Unit, onAdd: (String, String, String, Double, Double, Int, String, String, String) -> Unit) {
+fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Unit, onAdd: (String, String, String, Double, Double, Double, Int, String, String, String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var selectedShop by remember { mutableStateOf(vacantProperties.firstOrNull()?.name ?: "") }
     var expanded by remember { mutableStateOf(false) }
     var rent by remember { mutableStateOf(vacantProperties.firstOrNull()?.rentAmount?.toInt()?.toString() ?: "") }
+    var prevDues by remember { mutableStateOf("") }
     var deposit by remember { mutableStateOf("") }
     var dueDay by remember { mutableStateOf("5") }
     var start by remember { mutableStateOf("01 Jan 2026") }
@@ -782,7 +804,8 @@ fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Uni
                     }
                 }
 
-                item { OutlinedTextField(value = rent, onValueChange = { rent = it }, label = { Text("Rent Amount (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = rent, onValueChange = { rent = it }, label = { Text("Current Monthly Rent (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = prevDues, onValueChange = { prevDues = it }, label = { Text("Previous Months Pending Rent (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = deposit, onValueChange = { deposit = it }, label = { Text("Security Deposit (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = dueDay, onValueChange = { dueDay = it }, label = { Text("Rent Due Day (1-31)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = start, onValueChange = { start = it }, label = { Text("Agreement Start Date") }, modifier = Modifier.fillMaxWidth()) }
@@ -793,7 +816,7 @@ fun AddTenantDialog(vacantProperties: List<PropertyEntity>, onDismiss: () -> Uni
         confirmButton = {
             Button(onClick = {
                 if (name.isNotBlank() && selectedShop.isNotBlank()) {
-                    onAdd(name, phone, selectedShop, rent.toDoubleOrNull() ?: 0.0, deposit.toDoubleOrNull() ?: 0.0, dueDay.toIntOrNull() ?: 5, start, end, idProof)
+                    onAdd(name, phone, selectedShop, rent.toDoubleOrNull() ?: 0.0, prevDues.toDoubleOrNull() ?: 0.0, deposit.toDoubleOrNull() ?: 0.0, dueDay.toIntOrNull() ?: 5, start, end, idProof)
                 }
             }) { Text("Save Tenant") }
         },
