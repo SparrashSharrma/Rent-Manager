@@ -1,16 +1,21 @@
 package com.rentmanager.app
 
+import android.Manifest
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.telephony.SmsManager
+import android.util.Base64
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -46,16 +51,20 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.room.*
+import androidx.work.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 // ============================================================
 // 1. ROOM DATABASE ENTITIES
@@ -86,7 +95,7 @@ data class TenantEntity(
     val agreementEnd: String,
     val idProofNote: String,
     val tenantPhotoUri: String = "",
-    val idProofPhotoUris: String = "", // Comma-separated URIs (Max 3)
+    val idProofPhotoUris: String = "",
     val meterNumber: String = "",
     val electricityBill: Double = 0.0,
     val remarks: String = ""
@@ -207,13 +216,76 @@ abstract class AppDatabase : RoomDatabase() {
 }
 
 // ============================================================
-// 4. MAIN ACTIVITY & COLOR PALETTE
+// 4. AUTOMATIC MONTHLY SMS WORKER (Triggers on 1st & 5th)
+// ============================================================
+
+class AutoMonthlySmsWorker(val context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+
+    override suspend fun doWork(): Result {
+        val calendar = Calendar.getInstance()
+        val dayOfMonth = calendar.get(Calendar.DAY_OF_MONTH)
+
+        // Automatic trigger on 1st and 5th of every month
+        if (dayOfMonth == 5 || dayOfMonth == 1) {
+            if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
+                val db = AppDatabase.getDatabase(context)
+                val dao = db.appDao()
+                val tenants = dao.getTenantList()
+                val payments = dao.getPaymentList()
+                val currentMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
+
+                tenants.forEach { tenant ->
+                    val tenantPayments = payments.filter { it.tenantName.equals(tenant.name, ignoreCase = true) && it.rentMonth == currentMonth }
+                    val paidThisMonth = tenantPayments.sumOf { it.amount }
+                    val totalDue = tenant.monthlyRent + tenant.previousDues + tenant.electricityBill
+                    val balance = (totalDue - paidThisMonth).coerceAtLeast(0.0)
+
+                    if (balance > 0 && tenant.phone.isNotBlank()) {
+                        val msg = buildRentReminderMessage(tenant, balance)
+                        sendDirectSms(tenant.phone, msg)
+                    }
+                }
+            }
+        }
+        return Result.success()
+    }
+
+    private fun sendDirectSms(phone: String, message: String) {
+        try {
+            val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                context.getSystemService(SmsManager::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                SmsManager.getDefault()
+            }
+            val parts = smsManager.divideMessage(message)
+            smsManager.sendMultipartTextMessage(phone, null, parts, null, null)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+}
+
+fun scheduleAutoSmsWorker(context: Context) {
+    val workRequest = PeriodicWorkRequestBuilder<AutoMonthlySmsWorker>(24, TimeUnit.HOURS).build()
+    WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        "RentManagerAutoSmsWork",
+        ExistingPeriodicWorkPolicy.KEEP,
+        workRequest
+    )
+}
+
+// ============================================================
+// 5. MAIN ACTIVITY
 // ============================================================
 
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Schedule background worker
+        scheduleAutoSmsWorker(this)
 
         setContent {
             val saffronPrimary = Color(0xFFE65100)
@@ -238,7 +310,7 @@ class MainActivity : ComponentActivity() {
 }
 
 // ============================================================
-// 5. MAIN APP
+// 6. MAIN APP
 // ============================================================
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -263,6 +335,16 @@ fun RentManagerExportApp() {
     var propertyToEdit by remember { mutableStateOf<PropertyEntity?>(null) }
     var tenantToEdit by remember { mutableStateOf<TenantEntity?>(null) }
     var fullScreenPhotoUri by remember { mutableStateOf<String?>(null) }
+
+    val smsPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        if (isGranted) {
+            Toast.makeText(context, "Auto-SMS Reminders Enabled for 1st & 5th!", Toast.LENGTH_LONG).show()
+        } else {
+            Toast.makeText(context, "SMS Permission denied. Auto-SMS won't send.", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val restoreFileLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -310,7 +392,7 @@ fun RentManagerExportApp() {
                                     shape = RoundedCornerShape(4.dp)
                                 ) {
                                     Text(
-                                        "v1.3.7",
+                                        "v1.4.0",
                                         color = Color.White,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
@@ -328,6 +410,15 @@ fun RentManagerExportApp() {
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        smsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
+                    }) {
+                        Icon(
+                            Icons.Default.Send,
+                            contentDescription = "Enable SMS",
+                            tint = Color(0xFFE65100)
+                        )
+                    }
                     IconButton(onClick = { showBackupDialog = true }) {
                         Icon(
                             Icons.Default.MoreVert,
@@ -604,7 +695,7 @@ fun RentManagerExportApp() {
             title = { Text("Backup & Restore Data", color = Color(0xFF3E2723), fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Backup your shops, tenants, photos and payment records.")
+                    Text("Backup shops, tenants, photos (Base64) & payment history.")
                     Button(
                         onClick = {
                             coroutineScope.launch { exportBackupJson(context, dao) }
@@ -615,7 +706,7 @@ fun RentManagerExportApp() {
                     ) {
                         Icon(Icons.Default.Send, contentDescription = null, tint = Color.White)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Backup Data", color = Color.White)
+                        Text("Backup Data (Includes Photos)", color = Color.White)
                     }
                     OutlinedButton(
                         onClick = {
@@ -629,6 +720,18 @@ fun RentManagerExportApp() {
                         Spacer(modifier = Modifier.width(8.dp))
                         Text("Restore Backup")
                     }
+                    Button(
+                        onClick = {
+                            smsPermissionLauncher.launch(Manifest.permission.SEND_SMS)
+                            showBackupDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = null, tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Enable Auto-SMS (1st & 5th Date)", color = Color.White)
+                    }
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -637,7 +740,7 @@ fun RentManagerExportApp() {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "App Version: 1.3.7 | Tript Digitals\nDev: Sparash Ram Sharma",
+                            "App Version: 1.4.0 | Tript Digitals\nDev: Sparash Ram Sharma",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFE65100)
@@ -654,7 +757,7 @@ fun RentManagerExportApp() {
 }
 
 // ============================================================
-// 6. DASHBOARD
+// 7. DASHBOARD
 // ============================================================
 
 @Composable
@@ -713,7 +816,7 @@ fun DashboardScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFBC02D))
             ) {
                 Text(
-                    "v1.3.7",
+                    "v1.4.0",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFE65100),
@@ -788,7 +891,7 @@ fun DashboardScreen(
 }
 
 // ============================================================
-// 7. METRIC CARD
+// 8. METRIC CARD
 // ============================================================
 
 @Composable
@@ -806,7 +909,7 @@ fun MetricCard(title: String, value: String, color: Color, modifier: Modifier = 
 }
 
 // ============================================================
-// 8. PROPERTY TAB
+// 9. PROPERTY TAB
 // ============================================================
 
 @Composable
@@ -900,7 +1003,7 @@ fun PropertyTab(
 }
 
 // ============================================================
-// 9. TENANT TAB (WITH METER NO, ELEC BILL & REMARKS)
+// 10. TENANT TAB
 // ============================================================
 
 @Composable
@@ -1121,7 +1224,7 @@ fun TenantTab(
 }
 
 // ============================================================
-// 10. PAYMENT TAB
+// 11. PAYMENT TAB
 // ============================================================
 
 @Composable
@@ -1202,7 +1305,7 @@ fun PaymentTab(payments: List<PaymentEntity>) {
 }
 
 // ============================================================
-// 11. WHATSAPP & COMMUNICATIONS (WITH METER & BILL DETAILS)
+// 12. WHATSAPP & COMMUNICATIONS
 // ============================================================
 
 fun sendWhatsApp(context: Context, phone: String, message: String) {
@@ -1267,7 +1370,7 @@ fun buildRentReminderMessage(tenant: TenantEntity, balance: Double): String {
 }
 
 // ============================================================
-// 12. BACKUP & RESTORE
+// 13. BACKUP & RESTORE
 // ============================================================
 
 suspend fun exportBackupJson(context: Context, dao: AppDao) {
@@ -1277,8 +1380,8 @@ suspend fun exportBackupJson(context: Context, dao: AppDao) {
         val payments = dao.getPaymentList()
 
         val rootObj = JSONObject()
-        rootObj.put("backupVersion", 5)
-        rootObj.put("appVersion", "1.3.7")
+        rootObj.put("backupVersion", 6)
+        rootObj.put("appVersion", "1.4.0")
         rootObj.put("company", "Tript Digitals")
         rootObj.put("developer", "Sparash Ram Sharma")
         rootObj.put("backupDate", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
@@ -1309,11 +1412,19 @@ suspend fun exportBackupJson(context: Context, dao: AppDao) {
             obj.put("agreementStart", t.agreementStart)
             obj.put("agreementEnd", t.agreementEnd)
             obj.put("idProofNote", t.idProofNote)
-            obj.put("tenantPhotoUri", t.tenantPhotoUri)
-            obj.put("idProofPhotoUris", t.idProofPhotoUris)
             obj.put("meterNumber", t.meterNumber)
             obj.put("electricityBill", t.electricityBill)
             obj.put("remarks", t.remarks)
+
+            obj.put("tenantPhotoBase64", uriToBase64(context, t.tenantPhotoUri))
+
+            val idBase64List = t.idProofPhotoUris.split(",")
+                .filter { it.isNotBlank() }
+                .map { uriToBase64(context, it) }
+                .filter { it.isNotBlank() }
+            val idBase64Array = JSONArray(idBase64List)
+            obj.put("idProofPhotosBase64", idBase64Array)
+
             tenantArr.put(obj)
         }
         rootObj.put("tenants", tenantArr)
@@ -1384,6 +1495,26 @@ suspend fun restoreFromBackupJson(context: Context, dao: AppDao, uri: Uri) {
             val tenantArr = rootObj.getJSONArray("tenants")
             for (i in 0 until tenantArr.length()) {
                 val obj = tenantArr.getJSONObject(i)
+
+                var restoredPhotoUri = ""
+                if (obj.has("tenantPhotoBase64") && obj.getString("tenantPhotoBase64").isNotBlank()) {
+                    restoredPhotoUri = base64ToCacheUri(context, obj.getString("tenantPhotoBase64"))
+                } else if (obj.has("tenantPhotoUri")) {
+                    restoredPhotoUri = obj.optString("tenantPhotoUri", "")
+                }
+
+                val restoredIdUris = mutableListOf<String>()
+                if (obj.has("idProofPhotosBase64")) {
+                    val arr = obj.getJSONArray("idProofPhotosBase64")
+                    for (j in 0 until arr.length()) {
+                        val b64 = arr.getString(j)
+                        val newUri = base64ToCacheUri(context, b64)
+                        if (newUri.isNotBlank()) restoredIdUris.add(newUri)
+                    }
+                } else if (obj.has("idProofPhotoUris")) {
+                    restoredIdUris.addAll(obj.optString("idProofPhotoUris", "").split(",").filter { it.isNotBlank() })
+                }
+
                 dao.insertTenant(
                     TenantEntity(
                         id = obj.optInt("id", 0),
@@ -1397,8 +1528,8 @@ suspend fun restoreFromBackupJson(context: Context, dao: AppDao, uri: Uri) {
                         agreementStart = obj.optString("agreementStart", ""),
                         agreementEnd = obj.optString("agreementEnd", ""),
                         idProofNote = obj.optString("idProofNote", ""),
-                        tenantPhotoUri = obj.optString("tenantPhotoUri", ""),
-                        idProofPhotoUris = obj.optString("idProofPhotoUris", ""),
+                        tenantPhotoUri = restoredPhotoUri,
+                        idProofPhotoUris = restoredIdUris.joinToString(","),
                         meterNumber = obj.optString("meterNumber", ""),
                         electricityBill = obj.optDouble("electricityBill", 0.0),
                         remarks = obj.optString("remarks", "")
@@ -1425,14 +1556,14 @@ suspend fun restoreFromBackupJson(context: Context, dao: AppDao, uri: Uri) {
             }
         }
 
-        Toast.makeText(context, "Database restored successfully!", Toast.LENGTH_LONG).show()
+        Toast.makeText(context, "Database & Photos restored successfully!", Toast.LENGTH_LONG).show()
     } catch (e: Exception) {
         Toast.makeText(context, "Restore Error: ${e.message}", Toast.LENGTH_LONG).show()
     }
 }
 
 // ============================================================
-// 13. PDF & CSV EXPORTS
+// 14. PDF & CSV EXPORTS
 // ============================================================
 
 fun exportTenantPDF(context: Context, tenant: TenantEntity, tenantPayments: List<PaymentEntity>) {
@@ -1606,7 +1737,7 @@ fun exportAllPaymentsCSV(context: Context, payments: List<PaymentEntity>) {
 }
 
 // ============================================================
-// 14. ADD & EDIT DIALOGS (WITH METER NO, ELEC BILL & REMARKS)
+// 15. ADD & EDIT DIALOGS
 // ============================================================
 
 @Composable
@@ -1725,7 +1856,6 @@ fun AddTenantDialog(
                 item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
 
-                // TENANT PHOTO UPLOAD
                 item {
                     Column {
                         Text("Tenant Photo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
@@ -1806,7 +1936,6 @@ fun AddTenantDialog(
                 item { OutlinedTextField(value = idProof, onValueChange = { idProof = it }, label = { Text("ID Proof Note") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = remarks, onValueChange = { remarks = it }, label = { Text("Remarks / Notes") }, modifier = Modifier.fillMaxWidth()) }
 
-                // ID PROOF PHOTOS SECTION (MAX 3)
                 item {
                     Column {
                         Text("ID Proof Photos (Max 3): ${idProofPhotoList.size}/3", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
@@ -1935,7 +2064,6 @@ fun EditTenantDialog(
                 item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
 
-                // TENANT PHOTO UPLOAD
                 item {
                     Column {
                         Text("Tenant Photo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
@@ -1980,7 +2108,6 @@ fun EditTenantDialog(
                 item { OutlinedTextField(value = idProof, onValueChange = { idProof = it }, label = { Text("ID Proof Note") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = remarks, onValueChange = { remarks = it }, label = { Text("Remarks / Notes") }, modifier = Modifier.fillMaxWidth()) }
 
-                // ID PROOF PHOTOS SECTION (MAX 3)
                 item {
                     Column {
                         Text("ID Proof Photos (Max 3): ${idProofPhotoList.size}/3", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
@@ -2144,8 +2271,33 @@ fun AddPaymentDialog(tenants: List<TenantEntity>, onDismiss: () -> Unit, onAdd: 
 }
 
 // ============================================================
-// 15. HELPER UTILS & IMAGE LOADERS
+// 16. HELPER UTILS, BASE64 & IMAGE LOADERS
 // ============================================================
+
+fun uriToBase64(context: Context, uriStr: String): String {
+    if (uriStr.isBlank()) return ""
+    return try {
+        val uri = Uri.parse(uriStr)
+        val inputStream = context.contentResolver.openInputStream(uri)
+        val bytes = inputStream?.readBytes()
+        inputStream?.close()
+        if (bytes != null) Base64.encodeToString(bytes, Base64.DEFAULT) else ""
+    } catch (e: Exception) {
+        ""
+    }
+}
+
+fun base64ToCacheUri(context: Context, base64Str: String): String {
+    if (base64Str.isBlank()) return ""
+    return try {
+        val bytes = Base64.decode(base64Str, Base64.DEFAULT)
+        val file = File(context.filesDir, "img_restored_${System.currentTimeMillis()}_${(1000..9999).random()}.jpg")
+        file.outputStream().use { it.write(bytes) }
+        FileProvider.getUriForFile(context, "${context.packageName}.provider", file).toString()
+    } catch (e: Exception) {
+        ""
+    }
+}
 
 @Composable
 fun rememberBitmapFromUri(uriString: String): ImageBitmap? {
