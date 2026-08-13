@@ -13,8 +13,8 @@ android {
         applicationId = "com.rentmanager.app"
         minSdk = 24
         targetSdk = 35
-        versionCode = 7
-        versionName = "1.3.8"
+        versionCode = 8
+        versionName = "1.4.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -58,7 +58,7 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
 
-    // WorkManager Dependency
+    // WorkManager Dependency for Automatic Monthly SMS
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     // Room Database
