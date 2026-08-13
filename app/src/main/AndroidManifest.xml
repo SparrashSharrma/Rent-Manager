@@ -1,13 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- SMS PERMISSION FOR AUTOMATIC BACKGROUND REMINDERS -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+
     <application
         android:allowBackup="true"
         android:label="Rent Manager"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
 
-        <!-- MAIN ACTIVITY CONFIGURATION -->
         <activity
             android:name="com.rentmanager.app.MainActivity"
             android:exported="true">
@@ -17,7 +19,6 @@
             </intent-filter>
         </activity>
 
-        <!-- FILE PROVIDER FOR EXPORTS -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"
