@@ -86,7 +86,10 @@ data class TenantEntity(
     val agreementEnd: String,
     val idProofNote: String,
     val tenantPhotoUri: String = "",
-    val idProofPhotoUris: String = "" // Comma-separated URIs (Max 3)
+    val idProofPhotoUris: String = "", // Comma-separated URIs (Max 3)
+    val meterNumber: String = "",
+    val electricityBill: Double = 0.0,
+    val remarks: String = ""
 )
 
 @Entity(tableName = "payments")
@@ -173,7 +176,7 @@ interface AppDao {
         TenantEntity::class,
         PaymentEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -307,7 +310,7 @@ fun RentManagerExportApp() {
                                     shape = RoundedCornerShape(4.dp)
                                 ) {
                                     Text(
-                                        "v1.3.6",
+                                        "v1.3.7",
                                         color = Color.White,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
@@ -457,7 +460,7 @@ fun RentManagerExportApp() {
         AddTenantDialog(
             vacantProperties = properties.filter { !it.isOccupied },
             onDismiss = { showAddTenantDialog = false },
-            onAdd = { name, phone, shop, rent, prevDues, deposit, dueDay, start, end, idProof, photoUri, idPhotoUris ->
+            onAdd = { name, phone, shop, rent, prevDues, deposit, dueDay, start, end, idProof, photoUri, idPhotoUris, meterNo, elecBill, remarks ->
                 coroutineScope.launch {
                     dao.insertTenant(
                         TenantEntity(
@@ -472,7 +475,10 @@ fun RentManagerExportApp() {
                             agreementEnd = end.trim(),
                             idProofNote = idProof.trim(),
                             tenantPhotoUri = photoUri,
-                            idProofPhotoUris = idPhotoUris
+                            idProofPhotoUris = idPhotoUris,
+                            meterNumber = meterNo.trim(),
+                            electricityBill = elecBill,
+                            remarks = remarks.trim()
                         )
                     )
                     val prop = properties.find { it.name.equals(shop, ignoreCase = true) }
@@ -631,7 +637,7 @@ fun RentManagerExportApp() {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "App Version: 1.3.6 | Tript Digitals\nDev: Sparash Ram Sharma",
+                            "App Version: 1.3.7 | Tript Digitals\nDev: Sparash Ram Sharma",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFE65100)
@@ -660,7 +666,8 @@ fun DashboardScreen(
     val currentMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
     val totalCurrentRent = tenants.sumOf { it.monthlyRent }
     val totalPreviousDues = tenants.sumOf { it.previousDues }
-    val totalExpected = totalCurrentRent + totalPreviousDues
+    val totalElectricityBills = tenants.sumOf { it.electricityBill }
+    val totalExpected = totalCurrentRent + totalPreviousDues + totalElectricityBills
 
     val totalReceivedCurrentMonth = payments
         .filter { it.rentMonth == currentMonth }
@@ -682,7 +689,7 @@ fun DashboardScreen(
         val paidThisMonth = payments
             .filter { it.tenantName.equals(tenant.name, ignoreCase = true) && it.rentMonth == currentMonth }
             .sumOf { it.amount }
-        val due = tenant.monthlyRent + tenant.previousDues
+        val due = tenant.monthlyRent + tenant.previousDues + tenant.electricityBill
         if (paidThisMonth >= due) paidCount++ else overdueCount++
     }
 
@@ -706,7 +713,7 @@ fun DashboardScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFBC02D))
             ) {
                 Text(
-                    "v1.3.6",
+                    "v1.3.7",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = Color(0xFFE65100),
@@ -718,7 +725,7 @@ fun DashboardScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard("Expected Rent + Dues", "₹${totalExpected.toInt()}", Color(0xFFE65100), Modifier.weight(1f))
+            MetricCard("Expected (Rent+Bills)", "₹${totalExpected.toInt()}", Color(0xFFE65100), Modifier.weight(1f))
             MetricCard("Received This Month", "₹${totalReceivedCurrentMonth.toInt()}", Color(0xFF2E7D32), Modifier.weight(1f))
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -893,7 +900,7 @@ fun PropertyTab(
 }
 
 // ============================================================
-// 9. TENANT TAB (WITH PHOTO & ID PROOF THUMBNAILS)
+// 9. TENANT TAB (WITH METER NO, ELEC BILL & REMARKS)
 // ============================================================
 
 @Composable
@@ -911,7 +918,8 @@ fun TenantTab(
     val filteredTenants = tenants.filter {
         it.name.contains(searchQuery, ignoreCase = true) ||
                 it.propertyName.contains(searchQuery, ignoreCase = true) ||
-                it.phone.contains(searchQuery, ignoreCase = true)
+                it.phone.contains(searchQuery, ignoreCase = true) ||
+                it.meterNumber.contains(searchQuery, ignoreCase = true)
     }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
@@ -921,7 +929,7 @@ fun TenantTab(
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            label = { Text("Search Tenant or Shop...") },
+            label = { Text("Search Tenant, Shop, Meter...") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = "Search", tint = Color(0xFFE65100)) },
             modifier = Modifier.fillMaxWidth()
         )
@@ -939,7 +947,7 @@ fun TenantTab(
                     val currentMonthPayments = tenantPayments.filter { it.rentMonth == currentMonth }
                     val totalPaidThisMonth = currentMonthPayments.sumOf { it.amount }
                     val totalHistoricalPaid = tenantPayments.sumOf { it.amount }
-                    val totalDue = tenant.monthlyRent + tenant.previousDues
+                    val totalDue = tenant.monthlyRent + tenant.previousDues + tenant.electricityBill
                     val balance = (totalDue - totalPaidThisMonth).coerceAtLeast(0.0)
 
                     val status = when {
@@ -997,14 +1005,23 @@ fun TenantTab(
                             Spacer(modifier = Modifier.height(6.dp))
                             Text("Phone: ${tenant.phone}", fontSize = 13.sp)
                             Text("Monthly Rent: ₹${tenant.monthlyRent.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
+                            if (tenant.meterNumber.isNotBlank()) {
+                                Text("Meter No: ${tenant.meterNumber}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF3E2723))
+                            }
+                            if (tenant.electricityBill > 0) {
+                                Text("Electricity Bill: ₹${tenant.electricityBill.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                            }
                             Text("Previous Dues: ₹${tenant.previousDues.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
                             Text("Security Deposit: ₹${tenant.securityDeposit.toInt()}", fontSize = 13.sp, color = Color.DarkGray)
                             Text("Paid This Month: ₹${totalPaidThisMonth.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
-                            Text("Pending: ₹${balance.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (balance > 0) Color(0xFFD32F2F) else Color(0xFF2E7D32))
+                            Text("Pending Total: ₹${balance.toInt()}", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = if (balance > 0) Color(0xFFD32F2F) else Color(0xFF2E7D32))
                             Text("Total Historical Paid: ₹${totalHistoricalPaid.toInt()}", fontSize = 12.sp, color = Color.Gray)
                             Text("Rent Due: ${ordinalDay(tenant.dueDayOfMonth)} of every month", fontSize = 12.sp, color = Color.Gray)
                             Text("Agreement: ${tenant.agreementStart} to ${tenant.agreementEnd}", fontSize = 12.sp, color = Color.Gray)
                             Text("ID Proof Note: ${tenant.idProofNote}", fontSize = 12.sp, color = Color.Gray)
+                            if (tenant.remarks.isNotBlank()) {
+                                Text("Remarks: ${tenant.remarks}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFD84315))
+                            }
 
                             if (idPhotosList.isNotEmpty()) {
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -1185,7 +1202,7 @@ fun PaymentTab(payments: List<PaymentEntity>) {
 }
 
 // ============================================================
-// 11. WHATSAPP & COMMUNICATIONS
+// 11. WHATSAPP & COMMUNICATIONS (WITH METER & BILL DETAILS)
 // ============================================================
 
 fun sendWhatsApp(context: Context, phone: String, message: String) {
@@ -1229,11 +1246,20 @@ fun buildRentReminderMessage(tenant: TenantEntity, balance: Double): String {
         append("Rent reminder for ${tenant.propertyName}:\n")
         append("• Monthly Rent: ₹${tenant.monthlyRent.toInt()}\n")
         if (tenant.previousDues > 0) {
-            append("• Previous Pending Rent: ₹${tenant.previousDues.toInt()}\n")
+            append("• Previous Pending Dues: ₹${tenant.previousDues.toInt()}\n")
+        }
+        if (tenant.meterNumber.isNotBlank()) {
+            append("• Electricity Meter No: ${tenant.meterNumber}\n")
+        }
+        if (tenant.electricityBill > 0) {
+            append("• Electricity Bill: ₹${tenant.electricityBill.toInt()}\n")
         }
         append("• Total Amount Due: ₹${balance.toInt()}\n")
-        append("• Due Date: ${ordinalDay(tenant.dueDayOfMonth)} of every month\n\n")
-        append("Please make the payment at the earliest.\n\n")
+        append("• Due Date: ${ordinalDay(tenant.dueDayOfMonth)} of every month\n")
+        if (tenant.remarks.isNotBlank()) {
+            append("• Remarks/Note: ${tenant.remarks}\n")
+        }
+        append("\nPlease make the payment at the earliest.\n\n")
         append("Thank you.\n")
         append("Rent Manager - Tript Digitals\n")
         append("Dev: Sparash Ram Sharma")
@@ -1251,8 +1277,8 @@ suspend fun exportBackupJson(context: Context, dao: AppDao) {
         val payments = dao.getPaymentList()
 
         val rootObj = JSONObject()
-        rootObj.put("backupVersion", 4)
-        rootObj.put("appVersion", "1.3.6")
+        rootObj.put("backupVersion", 5)
+        rootObj.put("appVersion", "1.3.7")
         rootObj.put("company", "Tript Digitals")
         rootObj.put("developer", "Sparash Ram Sharma")
         rootObj.put("backupDate", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
@@ -1285,6 +1311,9 @@ suspend fun exportBackupJson(context: Context, dao: AppDao) {
             obj.put("idProofNote", t.idProofNote)
             obj.put("tenantPhotoUri", t.tenantPhotoUri)
             obj.put("idProofPhotoUris", t.idProofPhotoUris)
+            obj.put("meterNumber", t.meterNumber)
+            obj.put("electricityBill", t.electricityBill)
+            obj.put("remarks", t.remarks)
             tenantArr.put(obj)
         }
         rootObj.put("tenants", tenantArr)
@@ -1369,7 +1398,10 @@ suspend fun restoreFromBackupJson(context: Context, dao: AppDao, uri: Uri) {
                         agreementEnd = obj.optString("agreementEnd", ""),
                         idProofNote = obj.optString("idProofNote", ""),
                         tenantPhotoUri = obj.optString("tenantPhotoUri", ""),
-                        idProofPhotoUris = obj.optString("idProofPhotoUris", "")
+                        idProofPhotoUris = obj.optString("idProofPhotoUris", ""),
+                        meterNumber = obj.optString("meterNumber", ""),
+                        electricityBill = obj.optDouble("electricityBill", 0.0),
+                        remarks = obj.optString("remarks", "")
                     )
                 )
             }
@@ -1428,6 +1460,14 @@ fun exportTenantPDF(context: Context, tenant: TenantEntity, tenantPayments: List
         canvas.drawText("Assigned Shop/Property: ${tenant.propertyName}", 40f, y, paint)
         y += 20f
         canvas.drawText("Monthly Rent: Rs ${tenant.monthlyRent.toInt()}", 40f, y, paint)
+        if (tenant.meterNumber.isNotBlank()) {
+            y += 20f
+            canvas.drawText("Electricity Meter No: ${tenant.meterNumber}", 40f, y, paint)
+        }
+        if (tenant.electricityBill > 0) {
+            y += 20f
+            canvas.drawText("Electricity Bill: Rs ${tenant.electricityBill.toInt()}", 40f, y, paint)
+        }
         y += 20f
         canvas.drawText("Previous Pending Dues: Rs ${tenant.previousDues.toInt()}", 40f, y, paint)
         y += 20f
@@ -1436,6 +1476,10 @@ fun exportTenantPDF(context: Context, tenant: TenantEntity, tenantPayments: List
         canvas.drawText("Rent Due Day: ${ordinalDay(tenant.dueDayOfMonth)} of every month", 40f, y, paint)
         y += 20f
         canvas.drawText("Agreement: ${tenant.agreementStart} to ${tenant.agreementEnd}", 40f, y, paint)
+        if (tenant.remarks.isNotBlank()) {
+            y += 20f
+            canvas.drawText("Remarks: ${tenant.remarks}", 40f, y, paint)
+        }
 
         y += 30f
         val totalPaid = tenantPayments.sumOf { it.amount }
@@ -1502,10 +1546,13 @@ fun exportTenantCSV(context: Context, tenant: TenantEntity, tenantPayments: List
         builder.append("Phone,${csvEscape(tenant.phone)}\n")
         builder.append("Shop/Property,${csvEscape(tenant.propertyName)}\n")
         builder.append("Monthly Rent,${tenant.monthlyRent}\n")
+        builder.append("Meter Number,${csvEscape(tenant.meterNumber)}\n")
+        builder.append("Electricity Bill,${tenant.electricityBill}\n")
         builder.append("Previous Pending Rent,${tenant.previousDues}\n")
         builder.append("Security Deposit,${tenant.securityDeposit}\n")
         builder.append("Due Day,${ordinalDay(tenant.dueDayOfMonth)}\n")
         builder.append("Agreement Period,${csvEscape("${tenant.agreementStart} to ${tenant.agreementEnd}")}\n")
+        builder.append("Remarks,${csvEscape(tenant.remarks)}\n")
         builder.append("Historical Rent Paid,$totalPaid\n\n")
 
         builder.append("PAYMENT HISTORY\n")
@@ -1559,7 +1606,7 @@ fun exportAllPaymentsCSV(context: Context, payments: List<PaymentEntity>) {
 }
 
 // ============================================================
-// 14. ADD & EDIT DIALOGS (WITH GALLERY & CAMERA PICKERS)
+// 14. ADD & EDIT DIALOGS (WITH METER NO, ELEC BILL & REMARKS)
 // ============================================================
 
 @Composable
@@ -1627,7 +1674,7 @@ fun EditPropertyDialog(property: PropertyEntity, onDismiss: () -> Unit, onUpdate
 fun AddTenantDialog(
     vacantProperties: List<PropertyEntity>,
     onDismiss: () -> Unit,
-    onAdd: (String, String, String, Double, Double, Double, Int, String, String, String, String, String) -> Unit
+    onAdd: (String, String, String, Double, Double, Double, Int, String, String, String, String, String, String, Double, String) -> Unit
 ) {
     val context = LocalContext.current
     var name by remember { mutableStateOf("") }
@@ -1635,12 +1682,15 @@ fun AddTenantDialog(
     var selectedShop by remember { mutableStateOf(vacantProperties.firstOrNull()?.name ?: "") }
     var expanded by remember { mutableStateOf(false) }
     var rent by remember { mutableStateOf(vacantProperties.firstOrNull()?.rentAmount?.toInt()?.toString() ?: "") }
+    var meterNo by remember { mutableStateOf("") }
+    var elecBill by remember { mutableStateOf("") }
     var prevDues by remember { mutableStateOf("") }
     var deposit by remember { mutableStateOf("") }
     var dueDay by remember { mutableStateOf("5") }
     var start by remember { mutableStateOf(SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date())) }
     var end by remember { mutableStateOf("31 Dec 2026") }
     var idProof by remember { mutableStateOf("Aadhaar Card") }
+    var remarks by remember { mutableStateOf("") }
 
     var tenantPhotoUri by remember { mutableStateOf("") }
     var idProofPhotoList by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -1675,7 +1725,7 @@ fun AddTenantDialog(
                 item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
 
-                // TENANT PHOTO UPLOAD SECTION
+                // TENANT PHOTO UPLOAD
                 item {
                     Column {
                         Text("Tenant Photo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
@@ -1746,12 +1796,15 @@ fun AddTenantDialog(
                     }
                 }
                 item { OutlinedTextField(value = rent, onValueChange = { rent = it }, label = { Text("Current Monthly Rent (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = meterNo, onValueChange = { meterNo = it }, label = { Text("Electricity Meter Number") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = elecBill, onValueChange = { elecBill = it }, label = { Text("Electricity Bill Amount (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = prevDues, onValueChange = { prevDues = it }, label = { Text("Previous Pending Rent (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = deposit, onValueChange = { deposit = it }, label = { Text("Security Deposit (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = dueDay, onValueChange = { dueDay = it }, label = { Text("Rent Due Day (1-31)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = start, onValueChange = { start = it }, label = { Text("Agreement Start Date") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = end, onValueChange = { end = it }, label = { Text("Agreement End Date") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = idProof, onValueChange = { idProof = it }, label = { Text("ID Proof Note") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = remarks, onValueChange = { remarks = it }, label = { Text("Remarks / Notes") }, modifier = Modifier.fillMaxWidth()) }
 
                 // ID PROOF PHOTOS SECTION (MAX 3)
                 item {
@@ -1815,7 +1868,8 @@ fun AddTenantDialog(
                             name, phone, selectedShop, parsedRent,
                             prevDues.toDoubleOrNull() ?: 0.0, deposit.toDoubleOrNull() ?: 0.0,
                             parsedDueDay?.coerceIn(1, 31) ?: 5, start, end, idProof,
-                            tenantPhotoUri, idProofPhotoList.joinToString(",")
+                            tenantPhotoUri, idProofPhotoList.joinToString(","),
+                            meterNo, elecBill.toDoubleOrNull() ?: 0.0, remarks
                         )
                     }
                 },
@@ -1838,12 +1892,15 @@ fun EditTenantDialog(
     var phone by remember { mutableStateOf(tenant.phone) }
     var shopName by remember { mutableStateOf(tenant.propertyName) }
     var rent by remember { mutableStateOf(tenant.monthlyRent.toInt().toString()) }
+    var meterNo by remember { mutableStateOf(tenant.meterNumber) }
+    var elecBill by remember { mutableStateOf(if (tenant.electricityBill > 0) tenant.electricityBill.toInt().toString() else "") }
     var prevDues by remember { mutableStateOf(tenant.previousDues.toInt().toString()) }
     var deposit by remember { mutableStateOf(tenant.securityDeposit.toInt().toString()) }
     var dueDay by remember { mutableStateOf(tenant.dueDayOfMonth.toString()) }
     var start by remember { mutableStateOf(tenant.agreementStart) }
     var end by remember { mutableStateOf(tenant.agreementEnd) }
     var idProof by remember { mutableStateOf(tenant.idProofNote) }
+    var remarks by remember { mutableStateOf(tenant.remarks) }
 
     var tenantPhotoUri by remember { mutableStateOf(tenant.tenantPhotoUri) }
     var idProofPhotoList by remember { mutableStateOf(tenant.idProofPhotoUris.split(",").filter { it.isNotBlank() }) }
@@ -1878,7 +1935,7 @@ fun EditTenantDialog(
                 item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
 
-                // TENANT PHOTO UPLOAD SECTION
+                // TENANT PHOTO UPLOAD
                 item {
                     Column {
                         Text("Tenant Photo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
@@ -1913,12 +1970,15 @@ fun EditTenantDialog(
 
                 item { OutlinedTextField(value = shopName, onValueChange = { shopName = it }, label = { Text("Assigned Shop") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = rent, onValueChange = { rent = it }, label = { Text("Current Monthly Rent (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = meterNo, onValueChange = { meterNo = it }, label = { Text("Electricity Meter Number") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = elecBill, onValueChange = { elecBill = it }, label = { Text("Electricity Bill Amount (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = prevDues, onValueChange = { prevDues = it }, label = { Text("Previous Pending Rent (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = deposit, onValueChange = { deposit = it }, label = { Text("Security Deposit (₹)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = dueDay, onValueChange = { dueDay = it }, label = { Text("Rent Due Day (1-31)") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = start, onValueChange = { start = it }, label = { Text("Agreement Start Date") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = end, onValueChange = { end = it }, label = { Text("Agreement End Date") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = idProof, onValueChange = { idProof = it }, label = { Text("ID Proof Note") }, modifier = Modifier.fillMaxWidth()) }
+                item { OutlinedTextField(value = remarks, onValueChange = { remarks = it }, label = { Text("Remarks / Notes") }, modifier = Modifier.fillMaxWidth()) }
 
                 // ID PROOF PHOTOS SECTION (MAX 3)
                 item {
@@ -1989,7 +2049,10 @@ fun EditTenantDialog(
                                 agreementEnd = end.trim(),
                                 idProofNote = idProof.trim(),
                                 tenantPhotoUri = tenantPhotoUri,
-                                idProofPhotoUris = idProofPhotoList.joinToString(",")
+                                idProofPhotoUris = idProofPhotoList.joinToString(","),
+                                meterNumber = meterNo.trim(),
+                                electricityBill = elecBill.toDoubleOrNull() ?: 0.0,
+                                remarks = remarks.trim()
                             )
                         )
                     }
