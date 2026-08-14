@@ -216,7 +216,7 @@ abstract class AppDatabase : RoomDatabase() {
 }
 
 // ============================================================
-// 4. AUTOMATIC MONTHLY SMS WORKER (Triggers on 1st & 5th)
+// 4. AUTOMATIC MONTHLY SMS WORKER
 // ============================================================
 
 class AutoMonthlySmsWorker(val context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
@@ -225,7 +225,6 @@ class AutoMonthlySmsWorker(val context: Context, params: WorkerParameters) : Cor
         val calendar = Calendar.getInstance()
         val dayOfMonth = calendar.get(Calendar.DAY_OF_MONTH)
 
-        // Automatic trigger on 1st and 5th of every month
         if (dayOfMonth == 5 || dayOfMonth == 1) {
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED) {
                 val db = AppDatabase.getDatabase(context)
@@ -284,7 +283,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Schedule background worker
         scheduleAutoSmsWorker(this)
 
         setContent {
@@ -392,7 +390,7 @@ fun RentManagerExportApp() {
                                     shape = RoundedCornerShape(4.dp)
                                 ) {
                                     Text(
-                                        "v1.4.0",
+                                        "v1.4.1",
                                         color = Color.White,
                                         fontSize = 9.sp,
                                         fontWeight = FontWeight.Bold,
@@ -740,7 +738,7 @@ fun RentManagerExportApp() {
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            "App Version: 1.4.0 | Tript Digitals\nDev: Sparash Ram Sharma",
+                            "App Version: 1.4.1 | Tript Digitals\nDev: Sparash Ram Sharma",
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFE65100)
@@ -757,7 +755,7 @@ fun RentManagerExportApp() {
 }
 
 // ============================================================
-// 7. DASHBOARD
+// 7. DASHBOARD (SEPARATE EXPECTED RENT, DUES & ELECTRICITY BILLS)
 // ============================================================
 
 @Composable
@@ -767,20 +765,22 @@ fun DashboardScreen(
     payments: List<PaymentEntity>
 ) {
     val currentMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
-    val totalCurrentRent = tenants.sumOf { it.monthlyRent }
+    
+    // SEPARATE CALCULATIONS
+    val totalMonthlyRentExpected = tenants.sumOf { it.monthlyRent }
     val totalPreviousDues = tenants.sumOf { it.previousDues }
     val totalElectricityBills = tenants.sumOf { it.electricityBill }
-    val totalExpected = totalCurrentRent + totalPreviousDues + totalElectricityBills
+    val grandTotalExpected = totalMonthlyRentExpected + totalPreviousDues + totalElectricityBills
 
     val totalReceivedCurrentMonth = payments
         .filter { it.rentMonth == currentMonth }
         .sumOf { it.amount }
 
-    val pendingAmount = (totalExpected - totalReceivedCurrentMonth).coerceAtLeast(0.0)
+    val pendingAmount = (grandTotalExpected - totalReceivedCurrentMonth).coerceAtLeast(0.0)
     val vacantShops = properties.count { !it.isOccupied }
 
-    val collectionPercentage = if (totalExpected > 0) {
-        (totalReceivedCurrentMonth / totalExpected * 100).coerceIn(0.0, 100.0)
+    val collectionPercentage = if (grandTotalExpected > 0) {
+        (totalReceivedCurrentMonth / grandTotalExpected * 100).coerceIn(0.0, 100.0)
     } else {
         0.0
     }
@@ -796,96 +796,122 @@ fun DashboardScreen(
         if (paidThisMonth >= due) paidCount++ else overdueCount++
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text("Overview & Financials", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2723))
-                Text(
-                    "Current Month: ${SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date())}",
-                    fontSize = 12.sp,
-                    color = Color.Gray
-                )
-            }
-            Surface(
-                color = Color(0xFFFFF176),
-                shape = RoundedCornerShape(20.dp),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFBC02D))
+    LazyColumn(modifier = Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    "v1.4.0",
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFFE65100),
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard("Expected (Rent+Bills)", "₹${totalExpected.toInt()}", Color(0xFFE65100), Modifier.weight(1f))
-            MetricCard("Received This Month", "₹${totalReceivedCurrentMonth.toInt()}", Color(0xFF2E7D32), Modifier.weight(1f))
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard("Total Pending", "₹${pendingAmount.toInt()}", Color(0xFFD32F2F), Modifier.weight(1f))
-            MetricCard("Vacant Shops", "$vacantShops", Color(0xFFFF8F00), Modifier.weight(1f))
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            MetricCard("Paid Tenants", "$paidCount", Color(0xFF2E7D32), Modifier.weight(1f))
-            MetricCard("Overdue Tenants", "$overdueCount", Color(0xFFD32F2F), Modifier.weight(1f))
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
-            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFE082))
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Collection Rate", fontWeight = FontWeight.Bold, color = Color(0xFF3E2723))
-                    Text("%.1f%%".format(collectionPercentage), fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                Column {
+                    Text("Overview & Financials", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2723))
+                    Text(
+                        "Current Month: ${SimpleDateFormat("MMMM yyyy", Locale.getDefault()).format(Date())}",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
-
-                val progressFraction = (collectionPercentage / 100).toFloat().coerceIn(0f, 1f)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(12.dp)
-                        .background(Color(0xFFFFECB3), RoundedCornerShape(6.dp))
+                Surface(
+                    color = Color(0xFFFFF176),
+                    shape = RoundedCornerShape(20.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFBC02D))
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(progressFraction)
-                            .fillMaxHeight()
-                            .background(Color(0xFFE65100), RoundedCornerShape(6.dp))
+                    Text(
+                        "v1.4.1",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFFE65100),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
                     )
                 }
             }
         }
 
-        Spacer(modifier = Modifier.weight(1f))
-        Box(
-            modifier = Modifier.fillMaxWidth(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                "Developed by Sparash Ram Sharma | Tript Digitals",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF8D6E63)
-            )
+        // 1. SEPARATE MONTHLY RENT & PREVIOUS DUES
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetricCard("Monthly Rent Expected", "₹${totalMonthlyRentExpected.toInt()}", Color(0xFFE65100), Modifier.weight(1f))
+                MetricCard("Previous Pending Dues", "₹${totalPreviousDues.toInt()}", Color(0xFFD84315), Modifier.weight(1f))
+            }
+        }
+
+        // 2. SEPARATE ELECTRICITY BILLS & GRAND TOTAL
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetricCard("Electricity Bills", "₹${totalElectricityBills.toInt()}", Color(0xFFF57F17), Modifier.weight(1f))
+                MetricCard("Grand Total Expected", "₹${grandTotalExpected.toInt()}", Color(0xFFBF360C), Modifier.weight(1f))
+            }
+        }
+
+        // 3. RECEIVED THIS MONTH & TOTAL PENDING
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetricCard("Received This Month", "₹${totalReceivedCurrentMonth.toInt()}", Color(0xFF2E7D32), Modifier.weight(1f))
+                MetricCard("Total Pending", "₹${pendingAmount.toInt()}", Color(0xFFD32F2F), Modifier.weight(1f))
+            }
+        }
+
+        // 4. OVERDUE & PAID TENANTS
+        item {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                MetricCard("Pending/Overdue", "$overdueCount Tenants", Color(0xFFD32F2F), Modifier.weight(1f))
+                MetricCard("Fully Paid", "$paidCount Tenants", Color(0xFF2E7D32), Modifier.weight(1f))
+            }
+        }
+
+        // 5. VACANT SHOPS
+        item {
+            MetricCard("Vacant Shops Available", "$vacantShops Shops", Color(0xFFFF8F00), Modifier.fillMaxWidth())
+        }
+
+        // 6. COLLECTION RATE PROGRESS BAR
+        item {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8E1)),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFFE082))
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text("Collection Rate", fontWeight = FontWeight.Bold, color = Color(0xFF3E2723))
+                        Text("%.1f%%".format(collectionPercentage), fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    val progressFraction = (collectionPercentage / 100).toFloat().coerceIn(0f, 1f)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(12.dp)
+                            .background(Color(0xFFFFECB3), RoundedCornerShape(6.dp))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth(progressFraction)
+                                .fillMaxHeight()
+                                .background(Color(0xFFE65100), RoundedCornerShape(6.dp))
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(10.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    "Developed by Sparash Ram Sharma | Tript Digitals",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF8D6E63)
+                )
+            }
         }
     }
 }
@@ -903,7 +929,7 @@ fun MetricCard(title: String, value: String, color: Color, modifier: Modifier = 
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(title, fontSize = 11.sp, color = Color.DarkGray)
-            Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
+            Text(value, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = color)
         }
     }
 }
@@ -1003,7 +1029,7 @@ fun PropertyTab(
 }
 
 // ============================================================
-// 10. TENANT TAB
+// 10. TENANT TAB (PENDING AT TOP, PAID AT BOTTOM)
 // ============================================================
 
 @Composable
@@ -1025,8 +1051,44 @@ fun TenantTab(
                 it.meterNumber.contains(searchQuery, ignoreCase = true)
     }
 
+    // SORTING: OVERDUE / PENDING TENANTS ABOVE, PAID TENANTS BELOW
+    val sortedTenants = remember(filteredTenants, payments, currentMonth) {
+        filteredTenants.sortedWith(
+            compareByDescending<TenantEntity> { tenant ->
+                val tenantPayments = payments.filter { it.tenantName.equals(tenant.name, ignoreCase = true) && it.rentMonth == currentMonth }
+                val totalPaid = tenantPayments.sumOf { it.amount }
+                val totalDue = tenant.monthlyRent + tenant.previousDues + tenant.electricityBill
+                (totalDue - totalPaid).coerceAtLeast(0.0) > 0 // Overdue comes first (true > false)
+            }.thenByDescending { tenant ->
+                val tenantPayments = payments.filter { it.tenantName.equals(tenant.name, ignoreCase = true) && it.rentMonth == currentMonth }
+                val totalPaid = tenantPayments.sumOf { it.amount }
+                val totalDue = tenant.monthlyRent + tenant.previousDues + tenant.electricityBill
+                (totalDue - totalPaid).coerceAtLeast(0.0) // Higher pending amount first
+            }
+        )
+    }
+
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Text("Tenants (${tenants.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2723))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Tenants (${tenants.size})", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF3E2723))
+            Surface(
+                color = Color(0xFFFFE0B2),
+                shape = RoundedCornerShape(12.dp)
+            ) {
+                Text(
+                    "Pending Above | Paid Below",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFFE65100),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.height(8.dp))
 
         OutlinedTextField(
@@ -1039,13 +1101,13 @@ fun TenantTab(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        if (filteredTenants.isEmpty()) {
+        if (sortedTenants.isEmpty()) {
             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("No Tenants found.", color = Color.Gray)
             }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                items(filteredTenants) { tenant ->
+                items(sortedTenants) { tenant ->
                     val tenantPayments = payments.filter { it.tenantName.equals(tenant.name, ignoreCase = true) }
                     val currentMonthPayments = tenantPayments.filter { it.rentMonth == currentMonth }
                     val totalPaidThisMonth = currentMonthPayments.sumOf { it.amount }
@@ -1063,7 +1125,13 @@ fun TenantTab(
 
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFDE7))
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (balance > 0) Color(0xFFFFFDE7) else Color(0xFFF1F8E9)
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (balance > 0) Color(0xFFFFCC80) else Color(0xFFC8E6C9)
+                        )
                     ) {
                         Column(modifier = Modifier.padding(16.dp)) {
                             Row(
@@ -1381,7 +1449,7 @@ suspend fun exportBackupJson(context: Context, dao: AppDao) {
 
         val rootObj = JSONObject()
         rootObj.put("backupVersion", 6)
-        rootObj.put("appVersion", "1.4.0")
+        rootObj.put("appVersion", "1.4.1")
         rootObj.put("company", "Tript Digitals")
         rootObj.put("developer", "Sparash Ram Sharma")
         rootObj.put("backupDate", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date()))
@@ -1737,7 +1805,7 @@ fun exportAllPaymentsCSV(context: Context, payments: List<PaymentEntity>) {
 }
 
 // ============================================================
-// 15. ADD & EDIT DIALOGS
+// 15. ADD & EDIT DIALOGS (WITH FULL PHOTO EDIT & DELETE SUPPORT)
 // ============================================================
 
 @Composable
@@ -1856,6 +1924,7 @@ fun AddTenantDialog(
                 item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
 
+                // TENANT PHOTO UPLOAD & REMOVE
                 item {
                     Column {
                         Text("Tenant Photo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
@@ -1864,12 +1933,24 @@ fun AddTenantDialog(
                             if (tenantPhotoUri.isNotBlank()) {
                                 val bitmap = rememberBitmapFromUri(tenantPhotoUri)
                                 if (bitmap != null) {
-                                    Image(
-                                        bitmap = bitmap,
-                                        contentDescription = "Tenant Preview",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.size(50.dp).clip(CircleShape).border(1.5.dp, Color(0xFFE65100), CircleShape)
-                                    )
+                                    Box {
+                                        Image(
+                                            bitmap = bitmap,
+                                            contentDescription = "Tenant Preview",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.size(50.dp).clip(CircleShape).border(1.5.dp, Color(0xFFE65100), CircleShape)
+                                        )
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove",
+                                            tint = Color.Red,
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .background(Color.White, CircleShape)
+                                                .align(Alignment.TopEnd)
+                                                .clickable { tenantPhotoUri = "" }
+                                        )
+                                    }
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
                             }
@@ -1936,6 +2017,7 @@ fun AddTenantDialog(
                 item { OutlinedTextField(value = idProof, onValueChange = { idProof = it }, label = { Text("ID Proof Note") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = remarks, onValueChange = { remarks = it }, label = { Text("Remarks / Notes") }, modifier = Modifier.fillMaxWidth()) }
 
+                // ID PROOF PHOTOS SECTION (MAX 3)
                 item {
                     Column {
                         Text("ID Proof Photos (Max 3): ${idProofPhotoList.size}/3", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
@@ -2031,6 +2113,7 @@ fun EditTenantDialog(
     var idProof by remember { mutableStateOf(tenant.idProofNote) }
     var remarks by remember { mutableStateOf(tenant.remarks) }
 
+    // EDITABLE PHOTO & ID PROOFS EVEN AFTER RESTORE
     var tenantPhotoUri by remember { mutableStateOf(tenant.tenantPhotoUri) }
     var idProofPhotoList by remember { mutableStateOf(tenant.idProofPhotoUris.split(",").filter { it.isNotBlank() }) }
 
@@ -2064,6 +2147,7 @@ fun EditTenantDialog(
                 item { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Tenant Name") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("Phone Number") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), modifier = Modifier.fillMaxWidth()) }
 
+                // TENANT PHOTO EDIT / REPLACE / REMOVE
                 item {
                     Column {
                         Text("Tenant Photo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
@@ -2072,12 +2156,24 @@ fun EditTenantDialog(
                             if (tenantPhotoUri.isNotBlank()) {
                                 val bitmap = rememberBitmapFromUri(tenantPhotoUri)
                                 if (bitmap != null) {
-                                    Image(
-                                        bitmap = bitmap,
-                                        contentDescription = "Tenant Preview",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.size(50.dp).clip(CircleShape).border(1.5.dp, Color(0xFFE65100), CircleShape)
-                                    )
+                                    Box {
+                                        Image(
+                                            bitmap = bitmap,
+                                            contentDescription = "Tenant Preview",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.size(50.dp).clip(CircleShape).border(1.5.dp, Color(0xFFE65100), CircleShape)
+                                        )
+                                        Icon(
+                                            Icons.Default.Close,
+                                            contentDescription = "Remove",
+                                            tint = Color.Red,
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .background(Color.White, CircleShape)
+                                                .align(Alignment.TopEnd)
+                                                .clickable { tenantPhotoUri = "" }
+                                        )
+                                    }
                                     Spacer(modifier = Modifier.width(8.dp))
                                 }
                             }
@@ -2085,13 +2181,13 @@ fun EditTenantDialog(
                                 onClick = { photoGalleryLauncher.launch("image/*") },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF8F00)),
                                 modifier = Modifier.weight(1f)
-                            ) { Text("Gallery", fontSize = 10.sp, color = Color.White) }
+                            ) { Text("Change (Gal)", fontSize = 9.sp, color = Color.White) }
                             Spacer(modifier = Modifier.width(4.dp))
                             Button(
                                 onClick = { photoCameraLauncher.launch() },
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
                                 modifier = Modifier.weight(1f)
-                            ) { Text("Camera", fontSize = 10.sp, color = Color.White) }
+                            ) { Text("Change (Cam)", fontSize = 9.sp, color = Color.White) }
                         }
                     }
                 }
@@ -2108,6 +2204,7 @@ fun EditTenantDialog(
                 item { OutlinedTextField(value = idProof, onValueChange = { idProof = it }, label = { Text("ID Proof Note") }, modifier = Modifier.fillMaxWidth()) }
                 item { OutlinedTextField(value = remarks, onValueChange = { remarks = it }, label = { Text("Remarks / Notes") }, modifier = Modifier.fillMaxWidth()) }
 
+                // ID PROOF PHOTOS EDIT / ADD / REMOVE
                 item {
                     Column {
                         Text("ID Proof Photos (Max 3): ${idProofPhotoList.size}/3", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFE65100))
@@ -2312,7 +2409,15 @@ fun rememberBitmapFromUri(uriString: String): ImageBitmap? {
                 inputStream?.close()
                 imageBitmap = bitmap?.asImageBitmap()
             } catch (e: Exception) {
-                e.printStackTrace()
+                try {
+                    val file = File(uriString.replace("file://", ""))
+                    if (file.exists()) {
+                        val bitmap = BitmapFactory.decodeFile(file.absolutePath)
+                        imageBitmap = bitmap?.asImageBitmap()
+                    }
+                } catch (e2: Exception) {
+                    e2.printStackTrace()
+                }
             }
         } else {
             imageBitmap = null
